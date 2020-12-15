@@ -35,3 +35,30 @@
 * **관심사의 분리**
 <br>관심이 같은 것끼리는 모으고, 관심이 다른 것은 분리시킨다.
 <br>-> **최대한 모듈화를 진행하라!**
+
+* **메서드 추출(extract method) 기법**
+<br>공통의 기능을 담당하는 메서드로 중복된 코드를 뽑아내는 것.
+
+* **리팩토링**
+<br>기존의 코드를 외부의 동작방식에는 변화 없이 내부 구조만 변경해서 재구성하는 작업 또는 기술
+
+```java
+public void add(User user) throws ClassNotFoundException, SQLException {
+  Connection c = getConnection();
+  ...
+}
+
+public User get(String id) throws ClassNotFoundException, SQLException {
+  Connection c = getConnection();
+  ...
+}
+
+// 중복 사용되는 getConnection을 분리시킴.
+// 향후 Connection 정보가 변경되도 이 메서드만 수정하면 됨!
+private Connection getConnection() throws ClassNotFoundException, SQLException {
+  Class.forName("com.mysql.jdbc.Driver");
+  Connection c = DriverManager.getConnection(
+    "jdbc:mysql://localhost/springbook?characterEncoding=UTF-8", "spring", "book");
+  return c;
+}
+```
