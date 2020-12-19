@@ -266,6 +266,86 @@ public class UserDao {
   <br>전략 - ConnectionMaker를 구현한 클래스
   
   
-  ### 1.4 제어의 역전 (IoC)
+### 1.4 제어의 역전 (IoC - Inversion of Control)
+
+### 1.4.1 오브젝트 팩토리
+
+* 팩토리 (factory)
+<br>객체의 생성 방법을 결정하고 그렇게 만들어진 오브젝트를 돌려주는 것
+<br>추상 팩토리 패턴, 팩토리 메서드 패턴과는 다르니 혼동하지 말 것!
+
+```java
+// 리스트 1-14 UserDao의 생성 책임을 맡은 팩토리 클래스
+public class UserDaoFactory {
+  // UserDao 타입의 오브젝트를 어떻게 만들고 준비시킬지 결정
+  public UserDao userDao() {
+    ConnectionMaker connectionMaker = new DConnectionMaker();
+    UserDao dao = new UserDao(connectionMaker);
+    return dao;
+  }
+}
+
+// UserDaoTest는 UserDao가 어떻게 만들어지고 초기화되는지 신경쓰지 않고
+// UserDaoFactory로부터 UserDao 오브젝트를 받아서 사용
+public class UserDaoTest {
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    UserDao dao = new UserDaoFactory().userDao();
+    ...
+  }
+}
+```
+
+* UserDao는 변경이 필요 없이 연결방식을 변경 및 확장할 수 있다.
+
+* 애플리케이션의 컴포넌트 역할을 하는 오브젝트와, 애플리케이션의 구조를 결정하는 오브젝트를 분리함.
+
+
+### 1.4.2 오브젝트 팩토리의 활용
+
+```java
+public class UserDaoFactory {
+  // UserDao 타입의 오브젝트를 어떻게 만들고 준비시킬지 결정
+  public UserDao userDao() {
+    return new UserDao(connectionMaker());
+  }
   
+  public AccountDao accountDao() {
+    return new AccountDao(connectionMaker());
+  }
   
+  // 분리해서 중복을 제거한 ConnectionMaker 타입 오브젝트 생성 코드
+  public ConnectionMaker connectionMaker() {
+    return new DConnectionMaker();
+  }
+}
+```
+
+
+### 1.4.3 제어권의 이전을 통한 제어관계 역전
+
+* 일반적인 프로그램의 흐름
+  * main() 메서드에서 다음에 사용할 오브젝트 결정
+  * 결정한 오브젝트를 생성하고, 만들어진 오브젝트에 있는 메서드를 호출
+  * 오브젝트 메서드 안에서 다음에 사용할 것을 결정하고 호출
+  * 모든 종류의 작업을 **사용하는 쪽에서 제어하는 구조**
+
+* 제어의 역전
+  * 프로그램의 제어 흐름 구조가 뒤바뀌는 것
+  * 프로그램의 시작을 담당하는 main() 같은 엔트리 포인트를 제외하면
+  <br>위임 받은 제어 권한을 갖는 특별한 오브젝트에 의해 결정되고 생성됨.
+
+* 서블릿의 경우 서블릿에 대한 제어 권한을 가진 컨테이너가 적절한 시점에
+<br>서블릿 클래스의 오브젝트를 만들고 그 안의 메서드를 호출
+
+* 추상 UserDao를 상속한 서브클래스는 getConnection()을 구현하지만 언제 어떻게 사용될지 자신은 모름.
+<br>제어권을 상위 템플릿 메서드에 넘기고 자신은 필요할 때 호출되어 사용됨.
+
+* 프레임워크는 보통 프레임워크 위에 개발한 클래스를 등록해두고,
+<br>프레임워크가 흐름을 주도하는 중에 개발자가 만든 애플리케이션 코드를 사용하도록 만드는 방식
+
+* 프레임워크에는 분명한 베어의 역전 개념이 적용되어 있어야 한다.
+
+
+### 1.5 스프링의 IoC
+
+### 1.5.1 오브젝트 팩토리를 이용한 스프링 IoC
