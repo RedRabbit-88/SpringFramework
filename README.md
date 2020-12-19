@@ -168,3 +168,83 @@ simpleConnectionMaker = new SimpleConnectionMaker();
 * 1.3.1에서 발생하는 문제점들을 해결하기 위해 인터페이스를 도입
 
 * 두 개의 클래스가 서로 긴밀하게 연결되어 있지 않도록 중간에 추상적인 느슨한 연결고리를 만들어 줌.
+<br>인터페이스는 기능만 정의되어 있고 구현 방법은 나타나 있지 않다.
+<br>따라서, 인터페이스를 이용해서 자유로운 확장이 가능하다.
+
+```java
+// 리스트 1-8 ConnectionMaker 인터페이스
+public interface ConnectionMaker {
+  public abstract Connection makeConnection() throws ClassNotFoundException, SQLException;
+}
+
+// 리스트 1-9 ConnectionMaker 구현 클래스
+public class DConnectionMaker implements ConnectionMaker {
+  public Connection makeConnection() throws ClassNotFoundException, SQLException {
+    Class.forName("com.mysql.jdbc.Driver");
+    Connection c = DriverManager.getConnection(
+      "jdbc:mysql://localhost/springbook?characterEncoding=UTF-8", "spring", "book");
+    return c;
+  }
+}
+
+// 리스트 1-10 ConnectionMaker 인터페이스를 이용하도록 개선한 UserDao
+public class UserDao {
+  private ConnectionMaker connectionMaker;
+	
+  // 하지만 생성자에 클래스 이름이 존재!
+  // 완벽한 분리가 되지 않았다.
+  public UserDao() {
+    this.connectionMaker = new DConnectionMaker();
+  }
+}
+```
+
+
+### 1.3.3 관계설정 책임의 분리
+
+* 1.3.2의 UserDao에는 어떤 ConnectionMaker 구현 클래스를 사용할지 결정하는 코드가 남아있다.
+<br>인터페이스를 이용한 분리에도 **UserDao 변경 없이는 DB 커넥션 기능 확장이 자유롭지 않음.**
+  * UserDao와 UserDao에서 사용한 ConnectionMaker의 특정 구현 클래스 사이의 관계설정 분리에 대한 관심
+
+* UserDao의 클라이언트 오브젝트 (UserDaoTest)
+<br>UserDao와 ConnectionMaker 구현 클래스의 관계를 결정해주는 기능을 분리해서 두기에 적절
+
+* 외부에서 만든 오브젝트를 전달받으려면?
+<br>-> 메서드 파라미터나 생성자 파라미터를 전달받으면 된다.
+
+```java
+// 리스트 1-12 관계설정 책미이 추가된 UserDao 클라이언트임 main() 메서드
+public class UserDaoTest {
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    // UserDao가 사용한 ConnectionMaker 구현 클래스를 결정하고 오브젝트를 생성
+    ConnectionMaker connectionMaker = new DConnectionMaker();
+    
+    // 1. UserDao 생성
+    // 2. 사용한 ConnectionMaker 타입의 오브젝트 제공. 결국 두 오브젝트 사이의 의존관계 설정 효과
+    UserDao dao = new UserDao(connectionMaker);
+  }
+}
+
+public class UserDao {
+  private ConnectionMaker connectionMaker;
+	
+  // UserDaoTest에서 전달받은 구현 클래스에 따라 기능이 설정됨.
+  public UserDao(ConnectionMaker simpleConnectionMaker) {
+    this.connectionMaker = simpleConnectionMaker;
+  }
+  
+  public void add(User user) throws ClassNotFoundException, SQLException {
+    Connection c = this.connectionMaker.makeConnection();
+    ...
+  }
+
+  public User get(String id) throws ClassNotFoundException, SQLException {
+    Connection c = this.connectionMaker.makeConnection();
+    ...
+  }
+}
+```
+
+
+### 1.3.4 원칙과 패턴
+
