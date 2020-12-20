@@ -248,7 +248,7 @@ public class UserDao {
 
 ### 1.3.4 원칙과 패턴
 
-* **개방 폐쇄 원칙 (OCP: Open-Closed Principle**
+* **개방 폐쇄 원칙 (OCP: Open-Closed Principle)**
   * 클래스나 모듈은 **확장에는 열려 있어야 하고 변경에는 닫혀 있어야 한다.**
   * 깔끔한 설계를 위해 적용 가능한 객체지향 설계 원칙 중 하나
 
@@ -349,3 +349,113 @@ public class UserDaoFactory {
 ### 1.5 스프링의 IoC
 
 ### 1.5.1 오브젝트 팩토리를 이용한 스프링 IoC
+
+* 스프링의 핵심: **애플리케이션 컨텍스트 (Application Context) = 빈 팩토리 (Bean Factory)**
+
+* 빈 (Bean)
+  * 스피링이 제어권을 가지고 직접 만들고 관계를 부여하는 오브젝트
+  * 자바빈 또는 엔터프라이즈 자바빈에서 말하는 빈과 비슷한 오브젝트 단위의 애플리케이션 컴포넌트
+  * 스프링 컨테이너가 생성과 관계설정, 사용 등을 제어해주는 **제어의 역전이 적용된 오브젝트**
+
+* 빈 팩토리와 애플리케이션 컨텍스트의 차이
+  * 빈 팩토리: 빈을 생성하고 관계를 설정하는 **IoC의 기본 기능에 초점**
+  * 애플리케이션 컨텍스트: 애플리케이션 전반의 모든 구성요소의 제어작업을 담당하는 **IoC 엔진**
+  <br>-> 설정정보를 담고 있는 무엇인가를 가져와 이를 활용하는 범용적인 IoC 엔진
+
+* `@Configuration`
+<br>스프링이 빈 팩토리를 위한 오브젝트 설정을 담당하는 클래스로 인식할 수 있게 하는 애노테이션
+
+* `@Bean`
+<br>스프링이 오브젝트를 만들어주는 메서드를 인식할 수 있게 하는 애노테이션
+
+```java
+// 리스트 1-18 스프링 빈 팩토리가 사용할 설정정보를 담은 DaoFactory 클래스
+package springbook.user.dao;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+// 애플리케이션 컨텍스트 또는 빈 팩토리가 사용할 설정정보라는 표시
+@Configuration
+public class DaoFactory {
+	// 오브젝트 생성을 담당하는 IoC용 메서드라는 표시
+	@Bean
+	public UserDao userDao() {
+		UserDao dao = new UserDao(connectionMaker());
+		return dao;
+	}
+
+	@Bean
+	public ConnectionMaker connectionMaker() {
+		ConnectionMaker connectionMaker = new DConnectionMaker();
+		return connectionMaker;
+	}
+}
+
+// 리스트 1-19 애플리케이션 컨텍스트를 적용한 UserDaoTest
+public class UserDaoTest {
+	public static void main(String[] args) throws ClassNotFoundException, SQLException {
+		// 애플리케이션 컨텍스트는 ApplicationContext 타입의 오브젝트다.
+		ApplicationContext context = new AnnotationConfigApplicationContext(DaoFactory.class);
+		
+		// getBean은 ApplicationContext가 관리하는 오브젝트를 요청하는 메서드
+		// "userDao": ApplicationContext에 등록된 빈의 이름
+		UserDao dao = context.getBean("userDao", UserDao.class);
+		...
+	}
+}
+```
+
+* `getBean()`은 기본적으로 Object 타입으로 리턴해서 매번 캐스팅을 해줘야 하는 부담 존재.
+<br>제네릭 메서드 방식을 적용해 두 번째 파라미터에 리턴 타입을 주면 캐스팅 불필요.
+
+
+### 1.5.2 애플리케이션 컨텍스트에 동작방식
+
+* 오브젝트 팩토리(UserDaoFactory)에 대응되는 것이 스프링의 애플리케이션 컨텍스트(= IoC 컨테이너 / 스프링 컨테이너)
+
+* 애플리케이션 컨텍스트는 애플리케이션에서 IoC를 적용해서 관리할 모든 오브젝트에 대한 생성과 관계설정을 담당
+
+* `@Configuration`이 붙은 DaoFactory는 애플리케이션 컨텍스트가 활용하는 IoC 설정정보
+
+* getBean() 메서드 작동방식
+  * 클라이언트가 애플리케이션 컨텍스트의 getBean() 메서드를 호출
+  * 애플리케이션 컨텍스트의 빈 목록에서 요청한 이름이 있는지 확인
+  * 요청한 이름이 있다면 빈을 생성하는 메서드를 호출해서 오브젝트 생성
+  * 생성한 오브젝트를 클라이언트에 리턴
+
+* 애플리케이션 컨텍스트를 사용했을 때의 장점
+  * 클라이언트는 구체적인 팩토리 클래스를 알 필요가 없다.
+  * 애플리케이션 컨텍스트는 종합 IoC 서비스를 제공해준다.
+  * 애플리케이션 컨텍스트는 빈을 검색하는 다양한 방법을 제공한다.
+
+
+### 1.5.3 스프링 IoC의 용어 정리
+
+* **빈 (Bean)**
+  * 스프링이 IoC 방식으로 관리하는 오브젝트 (= managed object)
+  * 스프링이 직접 그 생성과 제어를 담당하는 오브젝트만을 빈이라 말한다.
+
+* **빈 팩토리 (Bean Factory)**
+  * 스프링의 IoC를 담당하는 핵심 컨테이너
+  * 빈을 등록, 생성, 조회하고 돌려주고, 그 외에 부가적인 빈을 관리하는 기능을 담당
+
+* **애플리케이션 컨텍스트 (Application Context)**
+  * 빈 팩토리를 확장한 IoC 컨테이너
+  * 스프링이 제공하는 애플리케이션 지원 기능을 모두 포함
+  * ApplicationContext는 BeanFactory를 상속함
+
+* **설정정보/메타정보 (Configuration metadata)**
+  * 애플리케이션 컨텍스트 또는 빈 팩토리가 IOC를 적용하기 위해 사용하는 메타정보
+  * IoC 컨테이너에 의해 관리되는 애플리케이션 오브젝트를 생성하고 구성할 때 사용
+
+* **컨테이너 또는 IoC 컨테이너 (Container)**
+  * 애플리케이션 컨텍스트나 빈 팩토리를 의미
+
+* **스프링 프레임워크**
+  * IoC 컨테이너, 애플리케이션 컨텍스트를 포함해서 스프링이 제공하는 모든 기능을 통틀어 말할 때 사용
+
+
+### 1.6 싱글톤 레지스트리와 오브젝트 스코프
+
+
