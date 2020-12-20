@@ -21,7 +21,9 @@
   <br>ex) Connection, Statement, ResultSet
   * JDBC API가 만들어내는 예외를 잡아서 직접 처리하거나 throws를 이용하여 메서드 밖으로 던짐.
   
+  
 ### 1.2 DAO의 분리
+  
   
 ### 1.2.1 관심사의 분리
   
@@ -34,6 +36,7 @@
 * **관심사의 분리**
 <br>관심이 같은 것끼리는 모으고, 관심이 다른 것은 분리시킨다.
 <br>-> **최대한 모듈화를 진행하라!**
+
 
 ### 1.2.2 커넥션 만들기의 추출
 
@@ -64,6 +67,7 @@ private Connection getConnection() throws ClassNotFoundException, SQLException {
   return c;
 }
 ```
+
 
 ### 1.2.3 DB 커넥션 만들기의 독립
 
@@ -119,6 +123,7 @@ public class DUserDao extends UserDao {
 
 ### 1.3 DAO의 확장
 
+
 ### 1.3.1 클래스의 분리
 
 
@@ -162,6 +167,7 @@ public class SimpleConnectionMaker {
 ```java
 simpleConnectionMaker = new SimpleConnectionMaker();
 ```
+
 
 ### 1.3.2 인터페이스의 도입
 
@@ -268,6 +274,7 @@ public class UserDao {
   
 ### 1.4 제어의 역전 (IoC - Inversion of Control)
 
+
 ### 1.4.1 오브젝트 팩토리
 
 * 팩토리 (factory)
@@ -347,6 +354,7 @@ public class UserDaoFactory {
 
 
 ### 1.5 스프링의 IoC
+
 
 ### 1.5.1 오브젝트 팩토리를 이용한 스프링 IoC
 
@@ -458,6 +466,7 @@ public class UserDaoTest {
 
 ### 1.6 싱글톤 레지스트리와 오브젝트 스코프
 
+
 ### 1.6.1 싱글톤 레지스트리오서의 애플리케이션 컨텍스트
 
 * 애플리케이션 컨텍스트는 싱글톤을 저장하고 관리하는 싱글톤 레지스트리(Singleton Registry)다.
@@ -478,6 +487,7 @@ public class UserDaoTest {
   * 싱글톤 방식으로 사용된 애플리케이션 클래스라도 public 생성자를 가질 수 있다.
   * 싱글톤 패턴과 달리 스프링이 지지하는 객체지향 설계 방식과 원칙, 디자인 패턴을 적용하는데 제약 없음.
 
+
 ### 1.6.2 싱글톤과 오브젝트의 상태
 
 * 싱글톤이 멀티스레드 환경에서 서비스 형태의 오브젝트로 사용되는 경우에는
@@ -487,6 +497,7 @@ public class UserDaoTest {
 
 * 자신이 사용하는 다른 싱글톤 빈을 저장하려는 용도라면 인스턴스 변수를 사용해도 좋다.
 <br>그 외의 경우에는 사용 금지!!
+
 
 ### 1.6.3 스프링 빈의 스코프
 
@@ -498,10 +509,12 @@ public class UserDaoTest {
 
 ### 1.7 의존관계 주입(DI: Dependency Injection)
 
+
 ### 1.7.1 제어의 역전(IoC)과 의존관계 주입
 
 * IoC라는 용어만으로는 스프링이 제공하는 IoC 방식의 핵심을 정확히 표현하지 못함.
 <br>따라서 의존관계 주입이라는 좀 더 의도가 명확히 드러나는 이름을 사용
+
 
 ### 1.7.2 런타임 의존관계 설정
 
@@ -546,6 +559,7 @@ public class UserDao {
 
 * DI는 자신이 사용할 오브젝트에 대한 선택과 생성 제어권을 외부로 넘기고 자신은 수동적으로 주입받은 오브젝트를 사용함.
 
+
 ### 1.7.3 의존관계 검색과 주입
 
 * 의존관계 검색 (Dependency Lookup)
@@ -555,6 +569,203 @@ public class UserDao {
 
 * 의존관계 검색 방식에서 검색하는 오브젝트는 의존관계 주입과 달리 자신이 스프링의 빈일 필요가 없다.
 
-* 의존관계 주입에서는 UserDao와 ConnectionMaker 사이에 DI가 적용되려면
-<br>UserDao도 반드시 컨테이너가 만드는 빈 오브젝트여야 함.
+* 의존관계 주입에서는 UserDao와 ConnectionMaker 사이에 DI가 적용되려면 UserDao도 반드시 컨테이너가 만드는 빈 오브젝트여야 함.
+<br>DI를 원하는 오브젝트는 먼저 자기 자신이 컨테이너가 관리하는 빈이 되어야 한다.
+
+* 주입받는 메서드 파라미터가 이미 특정 클래스 타입으로 고정되어 있다면 DI가 일어날 수 없다.
+<br>DI를 이용하려면 메서드 파라미터를 인터페이스로 이용해야 한다.
+
+
+### 1.7.4 의존관계 주입의 응용
+
+* 의존관계 주입의 장점
+  * 코드에는 런타임 클래스에 대한 의존관계가 나타나지 않음
+  * 인터페이스를 통해 결합도가 낮은 코드를 생성
+  * 다른 책임을 가진 사용 의존관계에 있는 대상이 바뀌거나 변경되더라도 자신은 영향을 받지 않음
+  * 변경을 통한 다양한 확장 방법에는 자유롭다.
+
+* 기능 구현의 교환
+  * 데이터베이스 연결을 변경 시 관련된 연결 소스 전체를 바꾸지 않고 빈 팩토리만 수정해서 해결 가능
+
+```java
+// 리스트 1-28 개발용 ConnectionMaker 생성 코드
+@Bean
+public ConnectionMaker connectionMaker() {
+	return new LocalDBConnectionMaker();
+}
+
+// 리스트 1-29 운영용 ConnectionMaker 생성 코드
+@Bean
+public ConnectionMaker connectionMaker() {
+	return new ProductionDBConnectionMaker();
+}
+```
+
+* 부가기능 추가
+  * 부가 기능을 추가할 때 인터페이스를 구현한 클래스에 추가함으로써 기존 소스 수정을 최소화할 수 있음
+
+```java
+// 리스트 1-30 연결횟수 카운팅 기능이 있는 클래스
+// CountingConnectionMaker의 오브젝트가 DI 받을 오브젝트 역시 ConnectionMaker 인터페이스를 구현한 오브젝트다.
+public class CountingConnectionMaker implements ConnectionMaker {
+	int counter = 0;
+	private ConnectionMaker realConnectionMaker;
+	
+	public CountingConnectionMaker(ConnectionMaker realConnectionMaker) {
+		this.realConnectionMaker = realConnectionMaker;
+	}
+	
+	public Connection makeConnection() throws ClassNotFoundException, SQLException {
+		this.counter++;
+		return realConnectionMaker.makeConnection();
+	}
+	
+	public int getCounter() {
+		return this.counter;
+	}
+}
+
+// 리스트 1-31 CountingConnectionMaker 의존관께가 추가된 DI 설정용 클래스
+@Configuration
+public class CountingDaoFactory {
+	@Bean
+	public UserDao userDao() {
+		// 모든 DAO는 여전히 connectionMaker()에서 만들어지는 오브젝트를 DI 받는다.
+		return new UserDao(connectionMaker());
+	}
+	
+	@Bean
+	public ConnectionMaker connectionMaker() {
+		return new CountingConnectionMaker(realConnectionMaker());
+	}
+	
+	@Bean
+	public ConnectionMaker realConnectionMaker() {
+		return new DConnectionMaker();
+	}
+}
+
+// 리스트 1-32 CountingConnectionMaker에 대한 테스트 클래스
+public class UserDaoConnectionCountingTest {
+	public static void main(String[] args) throws ClassNotFoundException, SQLException {
+		ApplicationContext context = new AnnotationConfigApplicationContext(CountingDaoFactory.class);
+		UserDao dao = context.getBean("userDao", UserDao.class);
+		
+		/*
+		 * DAO 사용 코드
+		 */
+		// DL(의존관계 검색)을 사용하면 이름을 이용해 어떤 빈이든 가져올 수 있다.
+		CountingConnectionMaker ccm = context.getBean("connectionMaker", CountingConnectionMaker.class);
+		System.out.println("Connection counter : " + ccm.getCounter());
+	}
+}
+```
+
+
+### 1.7.5 메서드를 이용한 의존관계 주입
+
+* 생성자가 아닌 일반 메서드를 이용해 의존 오브젝트와의 관계를 주입하는 방식 2가지
+  * 수정자 메서드를 이용한 주입 (Setter)
+  * 일반 메서드를 이용한 주입: 여러 개의 파라미터를 받을 수 있지만 개수가 많아지고 비슷한 타입이 많으면 실수할 수 있음.
+  <br>-> 스프링은 전통적으로 수정자 메서드를 가장 많이 사용해 옴.
+
+* 수정자 메서드 DI를 사용할 때는 메서드의 이름을 잘 결정하는게 중요.
+
+```java
+// 리스트 1-33 수정자 메서드 DI 방식을 사용한 UserDao
+public class UserDao {
+	private ConnectionMaker connectionMaker;
+	
+	public void setConnectionMaker(ConnectionMaker connectionMaker) {
+		this.connectionMaker = connectionMaker;
+	}
+	...
+}
+
+// 리스트 1-34 수정자 메서드 DI를 사용하는 팩토리 메서드
+@Bean
+public UserDao userDao() {
+	UserDao userDao = new UserDao();
+	userDao.setConnectionMaker(connectionMaker());
+	return userDao;
+}
+```
+
+
+### 1.8 XML을 이용한 설정
+
+
+### 1.8.1 XML 설정
+
+* 스프링의 애플리케이션 컨텍스트는 XML에 담긴 DI 정보를 활용할 수 있다.
+
+* DI 정보가 담긴 XML 파일은 `<beans>`를 루트 엘리먼트로 사용한다.
+  * `@Configuration` = `<beans>`
+  * `@Bean` = `<bean>`
+
+* 하나의 `@Bean` 메서드를 통해 얻을 수 있는 빈의 DI 정보
+  * 빈의 이름: `@Bean` 메서드 이름
+  * 빈의 클래스: 빈 오브젝트를 어떤 클래스를 이용해서 만들지를 정의
+  * 빈의 의존 오브젝트: 빈의 생성자나 수정자 메서드를 통해 의존 오브젝트를 넣어준다.
+
+* connectionMaker() 전환
+
+||자바 코드 설정정보|XML 설정정보|
+|--|--|--|
+|빈 설정파일|`@Configuration`|`<beans>`|
+|빈의 이름|`@Bean methodName()`|`<bean id="methodName"`|
+|빈의 클래스|`return new BeanClass();`|`class="a.b.c...BeanClass">`|
+
+* class 애트리뷰트에 넣을 클래스 이름은 패키지까지 모두 포함해야 함.
+
+```java
+// 리스트 1-35 connectionMaker() 메서드의 <bean> 태그 전환
+@Bean
+public ConnectionMaker connectionMaker() {
+	return new DConnectionMaker();
+}
+
+<bean id="connectionMaker" class="springbook...DConnectionMaker"/>
+```
+
+* userDao() 전환
+  * 수정자 메서드는 프로퍼티(property)가 된다.
+  * **name**은 **프로퍼티의 이름**. 프로퍼티 이름으로 수정자 메서드를 알 수 있음.
+  * **ref**는 수정자 메서드를 통해 **주입해줄 오브젝트의 빈 이름**
+
+```java
+// 리스트 1-36 userDao 빈 설정
+userDao.setConnectionMaker(connectionMaker());
+<property name="connectionMaker" ref="connectionMaker" />
+
+<bean id="userDao" class="springbook.dao.UserDao">
+	<property name="connectionMaker" ref="connectionMaker" />
+</bean>
+
+// 리스트 1-38 빈의 이름과 참조 ref의 변경
+<beans>
+	<bean id="myConnectionMaker" class="springbook.user.dao.DConnectionMaker" />
+	
+	<bean id="userDao" class="springbook.user.dao.UserDao">
+		<property name="connectionMaker" ref="myConnectionMaker" />
+	</bean>
+</beans>
+
+// 리스트 1-39 같은 인터페이스 타입의 빈을 여러 개 정의한 경우
+<beans>
+	<bean id="localDBConnectionMaker" class="springbook.user.dao.LocalDBConnectionMaker" />
+	<bean id="testDBConnectionMaker" class="springbook.user.dao.TestDBConnectionMaker" />
+	<bean id="productionDBConnectionMaker" class="springbook.user.dao.ProductionDBConnectionMaker" />
+	
+	<bean id="userDao" class="springbook.user.dao.UserDao">
+		<property name="connectionMaker" ref="localDBConnectionMaker" />
+	</bean>
+</beans>
+```
+
+* XML 문서의 구조를 정의하는 방법은 DTD(Document Type Definition)와 스키마(schema)가 존재
+<br>특별한 이유가 없다면 DTD보다는 스키마를 사용하는 편이 좋음.
+
+
+### 1.8.2 XML을 이용하는 애플리케이션 컨텍스트
 
