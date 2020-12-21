@@ -769,3 +769,111 @@ userDao.setConnectionMaker(connectionMaker());
 
 ### 1.8.2 XML을 이용하는 애플리케이션 컨텍스트
 
+* **GenericXmlApplicationContext**
+  * XML에서 빈의 의존관계 정보를 이용하는 IoC/DI 작업에 사용됨.
+  * 생성자 파라미터로 XML 파일의 클래스패스를 지정해서 사용.
+  * 클래스패스뿐 아니라 다양한 소스로부터 설정파일을 읽어올 수 있음.
+
+```java
+// 리스트 1-40 XML 설정정보를 담은 applicationContext.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd">
+	<bean id="myConnectionMaker" class="springbook.user.dao.DConnectionMaker">
+		<property name="driverClass" value="com.mysql.jdbc.Driver" />
+		<property name="url" value="jdbc:mysql://localhost/springbook?characterEncoding=UTF-8" />
+		<property name="username" value="spring" />
+		<property name="password" value="book" />
+	</bean>
+
+	<bean id="userDao" class="springbook.user.dao.UserDao">
+		<property name="connectionMaker" ref="myConnectionMaker" />
+	</bean>
+</beans>
+
+// GenericXmlApplicationContext 예시
+ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+```
+
+* **ClassPathXmlApplicationContext**
+  * XML 파일을 클래스패스에서 가져올 때 사용할 수 있는 편리한 기능이 추가된 버전
+
+```java
+// GenericXmlApplicationContext를 사용할 경우: 클래스패스를 전부 적어야 함.
+ApplicationContext context = new GenericXmlApplicationContext("springbook/user/dao/daoContext.xml");
+
+// ClassPathXmlApplicationContext를 사용할 경우: 2번째 파라미터의 패키지와 동일한 위치에 있는 것을 가져옴.
+ApplicationContext context = new ClassPathXmlApplicationContext("daoContext.xml", UserDao.class);
+```
+
+
+### 1.8.3 DataSource 인터페이스로 변환
+
+* 기존에 만든 ConnectionMaker 인터페이스의 기능을 모두 포함한 DataSource 인터페이스가 존재.
+
+```java
+// 리스트 1-42 DataSource를 사용하는 UserDao
+public class UserDao {
+	private DataSource dataSource;
+	
+	public void setDataSource(DataSource dataSource) {
+		this.dataSource = dataSource;
+	}
+
+	public void add(User user) throws SQLException {
+		Connection c = this.dataSource.getConnection();
+		...
+	}
+}
+
+// DataSource를 사용하도록 DaoFactory 변경
+@Configuration
+public class DaoFactory {
+	@Bean
+	public DataSource dataSource() {
+		SimpleDriverDataSource dataSource = new SimpleDriverDataSource ();
+
+		// DB 연결정보를 수정자 메서드를 통해 넣어준다.
+		// 이런 방식으로 오브젝트 레벨에서 DB 연결방식을 변경할 수 있음.
+		dataSource.setDriverClass(com.mysql.jdbc.Driver.class);
+		dataSource.setUrl("jdbc:mysql://localhost/springbook?characterEncoding=UTF-8");
+		dataSource.setUsername("spring");
+		dataSource.setPassword("book");
+
+		return dataSource;
+	}
+
+	@Bean
+	public UserDao userDao() {
+		UserDao userDao = new UserDao();
+		userDao.setDataSource(dataSource());
+		return userDao;
+	}
+}
+
+```
+
+
+### 1.8.4 프로퍼티 값의 주입
+
+* value 애트리뷰트를 이용해서 레퍼런스가 아닌 단순 값을 주입할 수 있음.
+
+```java
+// 리스트 1-46 코드를 통한 DB 연결정보 주입
+dataSource.setDriverClass(com.mysql.jdbc.Driver.class);
+dataSource.setUrl("jdbc:mysql://localhost/springbook?characterEncoding=UTF-8");
+dataSource.setUsername("spring");
+dataSource.setPassword("book");
+
+// 리스트 1-47 XML을 이용한 DB 연결정보 설정
+// value 애트리뷰트에 들어가는 건 다른 빈의 이름이 아닌 수정자 메서드의 파라미터로 사용되는 String
+<property name="driverClass" value="com.mysql.jdbc.Driver.class" />
+<property name="url" value="jdbc:mysql://localhost/springbook?characterEncoding=UTF-8" />
+<property name="username" value="spring" />
+<property name="password" value="book" />
+```
+
+* 스프링이 프로퍼티의 value를 수정자 메서드의 파라미터 타입을 참고해서 적절한 형태로 변환해 줌.
+<br>스프링은 value에 지정한 텍스트 값을 적절한 자바 타입으로 변환해준다.
