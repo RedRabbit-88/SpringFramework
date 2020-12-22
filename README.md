@@ -117,9 +117,8 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
 public class UserDaoTest {
-	
-  // @Test: JUnit에게 테스트용 메서드임을 알려줌
-  // 테스트용 메서드는 public으로 선언되어야 함.
+	// @Test: JUnit에게 테스트용 메서드임을 알려줌
+	// 테스트용 메서드는 public으로 선언되어야 함.
 	@Test 
 	public void andAndGet() throws SQLException {
 		ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
@@ -134,16 +133,16 @@ public class UserDaoTest {
 			
 		User user2 = dao.get(user.getId());
 		
-    // assertThat() 스태틱 메서드: if 조건문을 표현가능
-    // 첫 번째 파라미터의 값을 뒤에 나오는 매처(Matcher) 조건으로 비교해서 일치하면 다음으로, 아니면 테스트 실패
-    // is(): 매처의 일종으로 equals()로 비교하는 기능과 동일
+		// assertThat() 스태틱 메서드: if 조건문을 표현가능
+		// 첫 번째 파라미터의 값을 뒤에 나오는 매처(Matcher) 조건으로 비교해서 일치하면 다음으로, 아니면 테스트 실패
+		// is(): 매처의 일종으로 equals()로 비교하는 기능과 동일
 		assertThat(user2.getName(), is(user.getName()));
 		assertThat(user2.getPassword(), is(user.getPassword()));
 	}
 	
 	public static void main(String[] args) {
 		// JUnit을 이용해 테스트를 실행
-    JUnitCore.main("springbook.user.dao.UserDaoTest");
+		JUnitCore.main("springbook.user.dao.UserDaoTest");
 	}
 }
 ```
