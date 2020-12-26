@@ -155,3 +155,185 @@ public class UserDaoTest {
 
 
 ### 2.3.1 JUnit 테스트 실행 방법
+
+* IDE에 내장된 JUnit 테스트 지원도구를 사용하는게 가장 좋음.
+
+* 이클립스 JUnit 테스트 방법
+  * `@Test`가 들어있는 테스트 클래스를 선택하고 run > Run As > JUnit Test 를 실행.
+  * 테스트가 실패하면 소스를 수정하고 Rerun Test 버튼을 클릭
+  * 단축키: **Alt + Shift + X** 이후 **T**
+
+* 여러 개발자가 만든 코드를 모두 통합해서 테스트를 수행해야할 경우
+<br>서버에서 모든 코드를 가져와 통합하고 빌드한 후에 테스트를 진행하는 것이 좋음.
+<br>빌드 스크립트를 이용해 JUnit 테스트를 실행하고 결과를 메일로 통보받는 등의 방법 사용.
+
+
+### 2.3.2 테스트 결과의 일관성
+
+* 테스트는 외부 결과에 따라 성공하기도 하고 실패하기도 한다.
+<br>-> 일관성 있는 테스트 결과를 보장하는 것이 중요!
+
+```java
+// 리스트 2-7 deleteAll() 메서드
+// 일관성 있는 테스트를 위해 테스트 실행 전 users 테이블을 모두 삭제한다.
+public void deleteAll() throws SQLException {
+	Connection c = dataSource.getConnection();
+
+	PreparedStatement ps = c.prepareStatement("delete from users");
+	ps.executeUpdate();
+
+	ps.close();
+	c.close();
+}	
+
+// 리스트 2-8 getCount() 메서드
+// 테이블에 데이터가 제대로 들어갔는지 확인
+public int getCount() throws SQLException  {
+	Connection c = dataSource.getConnection();
+	
+	PreparedStatement ps = c.prepareStatement("select count(*) from users");
+
+	ResultSet rs = ps.executeQuery();
+	rs.next();
+	int count = rs.getInt(1);
+
+	rs.close();
+	ps.close();
+	c.close();
+
+	return count;
+}
+
+// 리스트 2-9 deleteAll()과 getCount()가 추가된 addAndGet() 테스트
+@Test 
+public void andAndGet() throws SQLException {
+	ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+	UserDao dao = context.getBean("userDao", UserDao.class);
+	
+	// deletAll()을 먼저 실행하고 테이블이 모두 삭제되었는지를 확인
+	dao.deleteAll();
+	assertThat(dao.getCount(), is(0));
+		
+	User user = new User();
+	user.setId("gyumee");
+	user.setName("박성철");
+	user.setPassword("springno1");
+
+	// 테이블에 데이터를 입력하고 제대로 입력됐는지를 확인
+	dao.add(user);
+	assertThat(dao.getCount(), is(1));
+		
+	User user2 = dao.get(user.getId());
+		
+	assertThat(user2.getName(), is(user.getName()));
+	assertThat(user2.getPassword(), is(user.getPassword()));
+}
+```
+
+
+### 2.3.3 포괄적인 테스트
+
+* 테스트를 안 만드는 것도 위험한 일이지만, 성의 없이 테스트를 만드는 바람에 문제가 있는 코드인데도
+<br>테스트가 성공하게 만드는 건 더 위험
+
+* 테스트 메서드는 한 번에 한 가지 검증 목적에만 충실한 것이 좋음.
+
+* JUnit은 하나의 클래스 안에 여러 개의 테스트 메서드가 들어가는 걸 허용.
+
+* 테스트 메서드의 조건
+  * `@Test` 어노테이션이 붙어있어야 함.
+  * 접근자는 public
+  * 리턴값은 void
+  * 파라미터는 없어야 함.
+
+```java
+// 리스트 2-10 파라미터가 있는 User 클래스 생성자
+public class User {
+	String id;
+	String name;
+	String password;
+	
+	// 자바빈의 규약을 따르는 클래스에 생성자를 명시적으로 추가했을 때는
+	// 파라미터가 없는 디폴트 생성자도 함께 정의해주는 걸 잊지 말자
+	public User() {
+	}
+	
+	public User(String id, String name, String password) {
+		this.id = id;
+		this.name = name;
+		this.password = password;
+	}
+	...
+}
+
+// 리스트 2-11 getCount() 테스트
+@Test
+public void count() throws SQLException {
+	ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+		
+	UserDao dao = context.getBean("userDao", UserDao.class);
+	User user1 = new User("gyumee", "박성철", "springno1");
+	User user2 = new User("leegw700", "이길원", "springno2");
+	User user3 = new User("bumjin", "박범진", "springno3");
+				
+	dao.deleteAll();
+	assertThat(dao.getCount(), is(0));
+			
+	dao.add(user1);
+	assertThat(dao.getCount(), is(1));
+		
+	dao.add(user2);
+	assertThat(dao.getCount(), is(2));
+		
+	dao.add(user3);
+	assertThat(dao.getCount(), is(3));
+}
+```
+
+* 모든 테스트는 실행 순서에 상관없이 독립적으로 항상 동일한 결과를 낼 수 있도록 해야 함.
+
+```java
+// 리스트 2-12 get() 테스트 기능을 보완한 addAndGet() 메서드
+@Test 
+public void andAndGet() throws SQLException {
+	ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+	UserDao dao = context.getBean("userDao", UserDao.class);
+
+	// 중복되지 않는 값을 가진 2개의 User 오브젝트를 준비
+	User user1 = new User("gyumee", "박성철", "springno1");
+	User user2 = new User("leegw700", "이길원", "springno2");
+		
+	dao.deleteAll();
+	assertThat(dao.getCount(), is(0));
+	
+	// 2개의 User 오브젝트를 테이블에 입력하고 count 확인
+	dao.add(user1);
+	dao.add(user2);
+	assertThat(dao.getCount(), is(2));
+		
+	// 첫 번째 User의 ID로 get()을 실행했을 때 제대로 값을 돌려주는지 확인.
+	User userget1 = dao.get(user1.getId());
+	assertThat(userget1.getName(), is(user1.getName()));
+	assertThat(userget1.getPassword(), is(user1.getPassword()));
+		
+	User userget2 = dao.get(user2.getId());
+	assertThat(userget2.getName(), is(user2.getName()));
+	assertThat(userget2.getPassword(), is(user2.getPassword()));
+}
+```
+
+* 예외조건에 대한 테스트
+  * `EmptyResultDataAccessException` 등의 예외를 지정할 수 있음.
+  * `@Test(expected=...)` 방식으로 어노테이션을 사용.
+
+* `@Test`에 expected를 추가하면 보통의 테스트와는 반대로 작동한다.
+  * 정상적으로 테스트 메서드가 마치면 테스트가 실패
+  * expected에서 지정한 예외가 던져지면 테스트가 성공
+  * 예외가 반드시 발생해야 하는 경우를 테스트하고 싶을 때 유용
+  
+* 개발자가 테스트를 직접 만들 때 자주 하는 실수? 성공하는 테스트만 골라서 만든다.
+<br>테스트를 작성할 때 부정적인 케이스를 먼저 만드는 습관을 들이는게 좋음.
+
+
+### 2.3.4 테스트가 이끄는 개발
+
