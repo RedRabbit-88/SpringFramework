@@ -241,7 +241,7 @@ public void andAndGet() throws SQLException {
 * JUnit은 하나의 클래스 안에 여러 개의 테스트 메서드가 들어가는 걸 허용.
 
 * 테스트 메서드의 조건
-  * `@Test` 어노테이션이 붙어있어야 함.
+  * `@Test` 애노테이션이 붙어있어야 함.
   * 접근자는 public
   * 리턴값은 void
   * 파라미터는 없어야 함.
@@ -324,7 +324,7 @@ public void andAndGet() throws SQLException {
 
 * 예외조건에 대한 테스트
   * `EmptyResultDataAccessException` 등의 예외를 지정할 수 있음.
-  * `@Test(expected=...)` 방식으로 어노테이션을 사용.
+  * `@Test(expected=...)` 방식으로 애노테시연을 사용.
 
 * `@Test`에 expected를 추가하면 보통의 테스트와는 반대로 작동한다.
   * 정상적으로 테스트 메서드가 마치면 테스트가 실패
@@ -336,4 +336,164 @@ public void andAndGet() throws SQLException {
 
 
 ### 2.3.4 테스트가 이끄는 개발
+
+* 만들어진 코드를 보고 테스트 방식을 테스트를 만들지 않고, 추가하고 싶은 기능을 코드로 표현 가능.
+
+||단계|내용|코드|
+|--|--|--|--|
+|조건|어떤 조건을 가지고|가져올 사용자 정보가 존재하지 않는 경우에|`dao.deletaAll();`<br>`assertThat(dao.getCount(), is(0));`|
+|행위|무엇을 할 때|존재하지 않는 id로 get()을 실행하면|`get("unknown_id");`|
+|결과|어떤 결과가 나온다|특별한 예외가 던져진다|`@Test(expected=EmptyResultDataAccessException.class)`|
+
+* 테스트 주도 개발 (Test Driven Development)
+<br>만들고자 하는 기능의 내용을 담고 있으면서 만들어진 코드를 검증도 해줄 수 있도록
+<br>테스트 코드를 먼저 만들고, 테스트를 성공하게 해주는 코드를 작성하는 방식의 개발방법
+<br>= 테스트 우선 개발 (Test First Development)
+  * 개발자가 테스트를 만들어가며 개발하는 방법이 주는 장점을 극대화한 방법
+  * 기본원칙: 실패한 테스트를 성공시키기 위한 목적이 아닌 코드는 만들지 않는다.
+
+* 코드를 만들고 나서 시간이 많이 지나면 테스트를 만들기가 귀찮아짐.
+<br>TDD는 아예 테스트를 먼저 만들고 그 테스트가 성공하도록 하는 코드만 만드는 식으로 진행.
+<br>-> 테스트를 빼먹지 않고 꼼꼼하게 만들어낼 수 있음.
+
+* TDD에서는 테스트를 작성하고 이를 성공시키는 코드를 만드는 작업의 주기를 가능한 한 짧게 가져가도록 권장.
+
+
+### 2.3.5 테스트 코드 개선
+
+* 테스트 코드 자체가 이미 자신에 대한 테스트이기 때문에 결과만 유지된다면 얼마든지 리팩토링해도 괜찮음.
+
+* `@Before`
+  * `@Test` 테서드가 실행되기 전에 먼저 실행돼야 하는 메서드를 정의
+  * 테스트 메서드에서 직접 호출하지는 않기 때문에 서로 주고받을 정보가 있다면 인스턴스 변수를 활용
+
+* JUnit이 테스트 클래스를 이용해서 테스트를 수행하는 방식
+  1. 테스트 클래스에서 `@Test`가 분은 public이고 void형이며 파라미터가 없는 테스트 메서드를 모두 찾는다.
+  2. 테스트 클래스의 오브젝트를 하나 생성.
+  3. `@Before`가 붙은 메서드가 있으면 실행.
+  4. `@Test`가 붙은 메서드를 하나 호출하고 테스트 결과를 저장.
+  5. `@After`가 붙은 메서드가 있으면 실행
+  6. 나머지 테스트 메서드에 대해 2~5번 반복
+  7. 모든 테스트의 결과를 종합해서 돌려준다.
+
+* JUnit은 `@Test`가 붙은 메서드를 실행하기 전과 후에 각각 `@Before`와 `@After`가 붙은 메서드를 자동으로 실행.
+<br>각 테스트 메서드를 실행할 때마다 **테스트 클래스의 오브젝트를 새로 만든다.**
+<br>-> 각 테스트가 서로 영향을 주지 않고 독립적으로 실행됨을 확실히 보장해주기 위해
+
+```java
+// 리스트 2-15 중복 코드를 제거한 UserDaoTest
+public class UserDaoTest {
+	// setUp() 메서드에서 만드는 오브젝트를 테스트 메서드에서 사용할 수 있도록 인스턴스 변수로 선언
+	private UserDao dao; 
+	
+	// @Test 테서드가 실행되기 전에 먼저 실행돼야 하는 메서드를 정의
+	@Before
+	public void setUp() {
+		ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+		this.dao = context.getBean("userDao", UserDao.class);
+	}
+	...
+}
+```
+
+* 픽스처(Fixture): 테스트를 수행하는데 필요한 정보나 오브젝트
+<br>ex) UserDaoTest에서의 dao
+
+```java
+public class UserDaoTest {
+	private UserDao dao; 
+	
+	// User 픽스처를 사용
+	private User user1;
+	private User user2;
+	private User user3;
+	
+	@Before
+	public void setUp() {
+		ApplicationContext context = new GenericXmlApplicationContext("applicationContext.xml");
+		this.dao = context.getBean("userDao", UserDao.class);
+		
+		// 테스트 수행 전에 User 픽스처에 대해 3개의 오브젝트를 생성
+		this.user1 = new User("gyumee", "박성철", "springno1");
+		this.user2 = new User("leegw700", "이길원", "springno2");
+		this.user3 = new User("bumjin", "이범진", "springno3");
+	}
+}
+```
+
+
+### 2.4 스프링 테스트 적용
+
+* `@Before` 메서드가 테스트 메서드 개수만큼 반복되기 때문에 애플리케이션 컨텍스트도 3번 반복된다.
+
+* 애플리케이션 컨텍스트가 만들어질 때는 모든 싱글톤 빈 오브젝트를 초기화.
+<br>초기화 시 어떤 빈은 독자적으로 많은 리소스를 할당하거나 독립적인 스레드를 띄우기도 함.
+<br>이럴 경우 테스트를 마칠 때마다 애플리케이션 컨텍스트 내의 빈이 할당한 리소스 등을 깔끔하게 정리해줘야 함.
+
+* JUnit은 테스트 클래스 전체에 걸쳐 딱 한 번만 실행되는 `@BeforeClass` 스태틱 메서드를 지원함.
+
+
+### 2.4.1 테스트를 위한 애플리케이션 컨텍스트 관리
+
+```java
+// 리스트 2-17 스프링 테스트 컨텍스트를 적용한 UserDaoTest
+// 스프링의 테스트 컨텍스트 프레임워크의 JUnit 확장기능 지정
+@RunWith(SpringJUnit4ClassRunner.class)
+// 테스트 컨텍스트가 자동으로 만들어줄 애플리케이션 컨텍스트의 위치 지정
+@ContextConfiguration(locations="/applicationContext.xml")
+public class UserDaoTest {
+	// 테스트 오브젝트가 만들어지고 나면 스프링 테스트 컨텍스트에 의해 자동으로 값이 주입됨.
+	@Autowired
+	ApplicationContext context;
+	
+	private UserDao dao; 
+	...
+	
+	@Before
+	public void setUp() {
+		this.dao = this.context.getBean("userDao", UserDao.class);
+		...
+	}
+	...
+}
+```
+
+* `@RunWith`
+  * JUnit 프레임워크의 테스트 실행 방법을 확장할 때 사용하는 애노테이션
+  * `SpringJUnit4ClassRunner`: JUnit용 테스트 컨텍스트 프레임워크 확장 클래스
+  <br>JUnit이 테스트를 진행하는 중에 테스트가 사용할 애플리케이션 컨텍스트를 만들고 관리하는 작업을 진행해줌.
+
+* `@ContextConfiguration`
+  * 자동으로 만들어줄 애플리케이션 컨텍스트의 설정파일 위치를 지정
+
+* 추가할 라이브러리: **org.springframework.test-3.0.7.RELEASE.jar**
+
+```java
+// context와 UserDaoTest 오브젝트의 주소값 출력 결과
+// context의 경우 모두 동일한 오브젝트를 사용
+// UserDaoTest 오브젝트의 경우 테스트 메서드 실행 시마다 새롭게 생성
+org.springframework.context.support.GenericApplicationContext@2ff5659e: startup date [Sat Dec 26 15:51:04 KST 2020]; root of context hierarchy
+springbook.user.dao.UserDaoTest@6321e813
+org.springframework.context.support.GenericApplicationContext@2ff5659e: startup date [Sat Dec 26 15:51:04 KST 2020]; root of context hierarchy
+springbook.user.dao.UserDaoTest@4671e53b
+org.springframework.context.support.GenericApplicationContext@2ff5659e: startup date [Sat Dec 26 15:51:04 KST 2020]; root of context hierarchy
+springbook.user.dao.UserDaoTest@23fe1d71
+```
+
+* 여러 개의 테스트 클래스가 있는데 모두 같은 설정파일을 가진 애플리케이션 컨텍스트를 사용한다면,
+<br>스프링은 테스트 클래스 사이에서도 애플리케이션 컨텍스트를 공유하게 해 줌.
+
+* `@AutoWired`
+  * 스프링의 DI에 사용되는 특별한 애노테이션
+  * `@Autowired`가 붙은 인스턴스 변수가 있으면, 테스트 컨텍스트 프레임워크는 변수 타입과 일치하는 컨텍스트 내의 빈을 찾음.
+  * 타입이 일치하는 빈이 있으면 인스턴스 변수에 주입해 줌.
+  * 일반적으로 주입을 위해서는 생성자나 수정자가 필요하지만 이 경우에는 없어도 주입 가능.
+  * 스프링 애플리케이션 컨텍스트는 초기화할 때 자기 자신도 빈으로 등록
+  * 따라서 애플리케이션 컨텍스트에는 ApplicationContext 타입의 빈이 존재하는 셈이고 DI도 가능.
+
+* `@AutoWired`는 같은 타입의 빈이 두 개 이상 있는 경우에는 타입만으로는 어떤 빈을 가져올지 결정할 수 없다.
+
+
+### 2.4.2 DI와 테스트
+
 
