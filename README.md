@@ -324,7 +324,7 @@ public void andAndGet() throws SQLException {
 
 * 예외조건에 대한 테스트
   * `EmptyResultDataAccessException` 등의 예외를 지정할 수 있음.
-  * `@Test(expected=...)` 방식으로 애노테시연을 사용.
+  * `@Test(expected=...)` 방식으로 애노테이션을 사용.
 
 * `@Test`에 expected를 추가하면 보통의 테스트와는 반대로 작동한다.
   * 정상적으로 테스트 메서드가 마치면 테스트가 실패
@@ -496,4 +496,300 @@ springbook.user.dao.UserDaoTest@23fe1d71
 
 ### 2.4.2 DI와 테스트
 
+* 인터페이스를 두고 DI를 적용해야 하는 이유
+  * SW 개발에서 절대 바뀌지 않는 것은 없다.
+    * 당장은 클래스를 바꿔서 사용할 계획이 없더라도 추후에 바뀔 가능성을 고려할 필요가 있음.
+  * 인터페이스를 두고 DI를 적용하면 다른 차원의 서비스 기능을 도입할 수 있음.
+  <br>ex) 1장에서 만든 DB 커넥션의 개수를 카운팅하는 부가기능
+  * 테스트를 가능한한 작은 단위의 대상에 국한해서 하기 위해
 
+* 테스트 코드 내에서 수정자를 이용해서 직접 DI가 가능
+  * XML 설정파일을 수정하지 않고도 테스트 코드를 통해 오브젝트 관계를 재구성할 수 있음
+  * 이 방식은 매우 주의해서 사용해야 함!
+  * `@DirtiesContext`를 지정해서 애플리케이션 컨텍스트의 상태를 변경한다는 것을 알려줘야 함.
+  * 생각보다 단점이 많음!
+
+```java
+// 리스트 2-20 테스트를 위한 수동 DI를 적용한 UserDaoTest
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations="/applicationContext.xml")
+// 테스트 메서드에서 애플리케이션 컨텍스트의 구성이나 상태를 변경한다는 것을 테스트 컨텍스트 프레임워크에 알려줌.
+@DirtiesContext
+public class UserDaoTest {
+	@Autowired
+	private UserDao dao; 
+	
+	private User user1;
+	private User user2;
+	private User user3;
+	
+	@Before
+	public void setUp() {
+		// 테스트에서 UserDao가 사용한 DataSource 오브젝트를 직접 생성한다.
+		DataSource dataSource = new SingleConnectionDataSource("jdbc:mysql://localhost/springbook", "spring", "book", true);
+		dao.setDataSource(dataSource);
+		
+		this.user1 = new User("gyumee", "박범철", "springno1");
+		this.user2 = new User("leegw700", "이건희", "springno2");
+		this.user3 = new User("bumjin", "이범진", "springno3");
+
+	}
+	...
+}
+```
+
+* 테스트에서 사용될 DataSource 클래스가 빈으로 정의된 테스트 전용 설정파일을 따로 만들어서 사용하는 방식이 나음.
+
+* 컨테이너 없는 DI 테스트
+  * 테스트를 위한 DataSource를 직접 만드는 번거로움은 있지만 애플리케이션 컨텍스트를 아예 사용하지 않으니 코드가 단순해짐.
+  * JUnit은 매번 새로운 테스트 오브젝트를 만들기 때문에 매번 새로운 UserDao 오브젝트가 만들어지는 단점이 있음.
+
+```java
+// 리스트 2-23 애플리케이션 컨텍스트 없는 DI 테스트
+public class UserDaoTest {
+	// @AutoWired가 없음.
+	private UserDao dao; 
+	
+	private User user1;
+	private User user2;
+	private User user3;
+	
+	@Before
+	public void setUp() {
+		// 오브젝트 생성, 관계설정 등을 모두 직접 수행
+		dao = new UserDao();
+		DataSource dataSource = new SingleConnectionDataSource("jdbc:mysql://localhost/springbook", "spring", "book", true);
+		dao.setDataSource(dataSource);
+		
+		this.user1 = new User("gyumee", "박범철", "springno1");
+		this.user2 = new User("leegw700", "이건희", "springno2");
+		this.user3 = new User("bumjin", "이범진", "springno3");
+
+	}
+```
+
+* 침투적 기술과 비침투적 기술
+  * 침투적 기술 (invasive)
+  <br>기술을 적용했을 때 애플리케이션 코드에 기술 관련 API가 등장하거나, 특정 인터페이스나 클래스를 사용하도록 강제하는 기술
+  <br>침투적 기술을 사용하면 애플리케이션 코드가 해당 기술에 종속되는 결과를 가져옴.
+  * 비침투적 기술 (noninvasive)
+  <br>애플리케이션 로직을 담은 코드에 아무런 영향을 주지 않고 적용이 가능. 기술에 종속적이지 않은 순수한 코드를 유지할 수 있음.
+  <br>스프링은 이런 비침투적 기술의 대표적인 예
+
+* DI를 이용한 테스트 방법 선택
+  * 항상 스프링 컨테이너 없이 테스트할 수 있는 방법을 가장 우선적으로 고려할 것.
+  <br>-> 테스트 수행 속도가 가장 빠르고 테스트 자체가 간결함.
+  * 여러 오브젝트와 복잡한 의존관계를 갖고 있는 오브젝트를 테스트해야 할 경우
+  <br>-> 스프링의 설정을 이용한 DI 방식의 테스트를 이용
+  * 예외적인 의존관계를 강제로 구성해서 테스해야 할 경우
+  <br>-> 컨텍스트에서 DI 받은 오브젝트에 다시 테스트 코드로 수동 DI해서 테스트하는 방법을 사용
+
+
+### 2.5 학습 테스트로 배우는 스프링
+
+* 학습 테스트 (Learning Test)
+<br>자신이 만들지 않은 프레임워크나 다른 개발팀에서 만들어서 제공한 라이브러리 등에 대해서 작성하는 테스트
+
+* 학습 테스트의 목적
+<br>자신이 사용할 API나 프레임워크의 기능을 테스트로 보면서 사용 방법을 익히려는 것.
+
+
+### 2.5.1 학습 테스트의 장점
+
+* 다양한 조건에 따른 기능을 손쉽게 확인 가능.
+
+* 학습 테스트 코드를 개발 중에 참고할 수 있음.
+
+* 프레임워크나 제품을 업그레이드할 때 호환성 검증을 도와줌.
+
+* 테스트 작성에 대한 좋은 훈련이 된다.
+
+* 새로운 기술을 공부하는 과정이 즐거워진다.
+
+
+### 2.5.2 학습 테스트 예제
+
+* JUnit 테스트 오브젝트 테스트
+  * 새로운 테스트 클래스를 만들고 적당한 이름으로 세 개의 테스트 메서드를 추가
+  * 테스트 클래스 자신의 타입으로 스태틱 변수를 하나 선언
+  * 매 테스트 메서드에서 현재 스태틱 변수에 담긴 오브젝트와 자신을 비교하여 같지 않음을 확인
+
+```java
+// 리스트 2-24 JUnit 테스트 오브젝트 생성에 대한 학습 테스트
+package springbook.learningtest.junit;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.sameInstance;
+import static org.junit.Assert.assertThat;
+
+import org.junit.Test;
+
+public class JUnitInitTest {
+	static JUnitInitTest testObject;
+	
+	@Test
+	public void test1() {
+		// is() = equals() 비교를 해서 같으면 성공
+		// is(not())은 equals()와 반대로 같지 않아야 성공
+		// sameInstance() 실제로 같은 오브젝트인지를 확인
+		assertThat(this, is(not(sameInstance(testObject))));
+		testObject = this;
+	}
+	
+	@Test
+	public void test2() {
+		assertThat(this, is(not(sameInstance(testObject))));
+		testObject = this;
+	}
+	
+	@Test
+	public void test3() {
+		assertThat(this, is(not(sameInstance(testObject))));
+		testObject = this;
+	}
+}
+
+// 리스트 2-25 개선한 JUnit 테스트 오브텍트 생성에 대한 학습 테스트
+import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertThat;
+import static org.junit.matchers.JUnitMatchers.hasItem;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import org.junit.Test;
+
+public class JUnitSetTest {
+	static Set<JUnitSetTest> testObjects = new HashSet<JUnitSetTest>();
+	
+	@Test
+	public void test1() {
+		// hasItem(): 컬렉션의 원소인지를 검사하는 매처
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+	}
+	
+	@Test
+	public void test2() {
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+	}
+	
+	@Test
+	public void test3() {
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+	}
+}
+```
+
+* 스프링 테스트 컨텍스트 테스트
+  * `assertThat()`: 매처와 비교할 대상인 첫 번째 파라미터에 Boolean 타입의 결과가 나오는 조건문을 넣는다.
+  * `assertTrue()`: 조건문을 받아서 그 결과가 true인지 false인지를 확인함.
+  * `either()`는 뒤에 이어서 나오는 `or()`와 함께 두 개의 매처의 결과를 OR 조건으로 비교.
+
+```java
+package springbook.learningtest.junit;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.matchers.JUnitMatchers.either;
+import static org.junit.matchers.JUnitMatchers.hasItem;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration("junit.xml")
+public class JUnitTest {
+	// 테스트 컨텍스트가 매번 주입해주는 애플리케이션 컨텍스트는 항상 같은 오브젝트인지 테스트로 검증.
+	@Autowired ApplicationContext context;
+	
+	static Set<JUnitTest> testObjects = new HashSet<JUnitTest>();
+	static ApplicationContext contextObject = null;
+	
+	@Test public void test1() {
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+		
+		assertThat(contextObject == null || contextObject == this.context, is(true));
+		contextObject = this.context;
+	}
+	
+	@Test public void test2() {
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+		
+		assertTrue(contextObject == null || contextObject == this.context);
+		contextObject = this.context;
+	}
+	
+	@Test public void test3() {
+		assertThat(testObjects, not(hasItem(this)));
+		testObjects.add(this);
+		
+		assertThat(contextObject, either(is(nullValue())).or(is(this.contextObject)));
+		contextObject = this.context;
+	}
+}
+```
+
+
+### 2.5.3 버그 테스트
+
+* 버그 테스트 (Bug Test)
+<br>코드에 오류가 있을 때 그 오류를 가장 잘 드러내줄 수 있는 테스트
+  * 테스트의 완성도를 높여준다.
+  * 버그의 내용을 명확하게 분석하게 해준다.
+  * 기술적인 문제를 해결하는데 도움이 된다.
+
+* 동등분할 (equivalence partitioning)
+<br>같은 결과를 내는 값의 범위를 구분해서 각 대표 값으로 테스트 하는 방법
+
+* 경계값 분석 (boundary value analysis)
+<br>에러는 동등분할 범위의 경계에서 주로 많이 발생한다는 특징을 이용해서 경계의 근처에 있는 값을 이용해 테스트 하는 방법
+
+
+### 2.6 정리
+
+* 테스트는 자동화돼야 하고, 빠르게 실행할 수 있어야 한다.
+
+* main() 테스트 대신 JUnit 프레임워크를 이용한 테스트 작성이 편리함.
+
+* 테스트 결과는 일관성이 있어야 한다.
+<br>코드의 변경 없이 환경이나 테스트 실행 순서에 따라 결과가 달라지면 안 됨.
+
+* 테스트는 포괄적으로 작성해야 한다.
+<br>코충분한 검증을 하지 않는 테스트는 없는 것보다 안 좋을 수 있음.
+
+* 코드 작성과 테스트 수행의 간격이 짧을수록 효과적이다.
+
+* 테스트하기 쉬운 코드가 좋은 코드다.
+
+* 테스트를 먼저 만들고 테스트를 성공시키는 코드를 만들어가는 테스트 주도 개발 방법도 유용.
+
+* 테스트 코드도 애플리케이션 코드와 마찬가지로 적절한 리팩토링이 필요.
+
+* `@Before`, `@After`를 사용해서 테스트 메서드들의 공통 준비 작업과 정리 작업을 처리할 수 있음.
+
+* 스프링 테스트 컨텍스트 프레임워크를 이용하면 테스트 성능을 향상시킬 수 있다.
+<br>ex) `@RunWith`, `@ContextConfiguration`, `@AutoWired`
+
+* 동일한 설정파일을 사용하는 테스트는 하나의 애플리케이션 컨텍스트를 공유한다.
+
+* `@AutoWired`를 사용하면 컨텍스트의 빈을 테스트 오브젝트에 DI할 수 있다.
+
+* 기술의 사용 방법을 익히고 이해를 돕기 위해 학습 테스트를 작성하자.
+
+* 오류가 발견될 경우 그에 대한 버그 테스트를 만들어두면 유용하다.
