@@ -637,3 +637,210 @@ ublic void deleteAll() throws SQLException {
 
 ### 3.5.3 템플릿/콜백의 응용
 
+* 템플릿/콜백 패턴이 스프링에서만 사용할 수 있거나 스프링이 독점적으로 제공하는 기술은 아니지만,
+<br>스프링만큼 이 패턴을 적극적으로 활용하는 프레임워크는 없다.
+
+* 스프링을 사용하는 개발자라면 당연히 스프링이 제공하는 템플릿/콜백 기능을 잘 사용할 수 있어야 함.
+<br>템플릿/콜백이 필요한 곳이 있으면 직접 만들어서 사용할 줄도 알아야 함.
+
+* 고정된 작업 흐름을 갖고 있으면서 여기저기서 자주 반복되는 코드가 있다면,
+<br>중복되는 코드를 분리할 방법을 생각해보는 습관을 기르자.
+  1. 중복된 코드를 메서드로 분리하는 걸 시도
+  2. 일부 작업을 필요에 따라 바꿔 사용해야 한다면 인터페이스를 사이에 두고 분리해서
+  <br>전략 패턴을 적용하고 DI로 의존관계를 관리하도록 만든다.
+  3. 바뀌는 부분이 한 애플리케이션 안에서 동시에 여러 종류가 만들어질 수 있다면
+  <br>템플릿/콜백 패턴을 적용하는 것을 고려
+
+* 테스트와 try/catch/finally
+  * 파일을 하나 열어서 모든 라인의 숫자를 더한 합을 만드는 코드
+
+```java
+// 리스트 3-30 파일의 숫자 합을 계산하는 코드의 테스트
+public class CalcSumTest {	
+	@Test public void sumOfNumbers() throws IOException {
+		Calculator calculator = new Calculator();
+		int sum = calculator.calcSum(getClass().getResource("numbers.txt").getPath());
+		assertThat(sum, is(10));
+	}
+}
+
+// 리스트 3-32 try/catch/finally를 적용한 calcSum() 메서드
+public class Calculator {
+	public Integer calcSum(String filepath) throws IOException {
+		BufferedReader br = null;
+		
+		try {
+			// 한 줄씩 읽기 편하게 BufferedReader로 파일을 가져온다.
+			br = new BufferedReader(new FileReader(filepath));
+			Integer sum = 0;
+			String line = null;
+		
+			// 마지막 라인까지 한 줄씩 읽어가면서 숫자를 더한다.
+			while(line = br.readLine()) != null) {
+				sum += Integer.valueOf(line);
+			}
+		
+			return sum;
+		} catch (IOException e) {
+			System.out.println(e.getMessage());
+		} finally {
+			// BufferedReader 오브젝트가 생성되기 전에 예외가 발생할 수 있으므로 null 체크
+			if (br != null) {
+				try { br.close(); }
+				catch (IOException e) { System.out.println(e.getMessage()); }
+			}
+		}
+	}
+}
+```
+
+* 중복의 제거와 템플릿/콜백 설계
+  * 파일에 있는 모든 숫자의 곱을 계산하는 기능이 추가될 경우 소스를 모두 복사해서 사용할 것인가? NO!!
+  <br>-> 템플릿/콜백 패턴을 적용!
+  * 템플릿/콜백을 적용할 때는 템플릿과 콜백의 결계를 정하고 템플릿이 콜백에서, 콜백이 템플릿에게
+  <br>각자 전달하는 내용이 무엇인지 파악하는게 가장 중요.
+  <br>-> 파악된 내용을 기반으로 콜백의 인터페이스를 정의해야 하기 때문
+
+```java
+// 리스트 3-33 BufferedReader를 전달받는 콜백 인터페이스
+public interface BufferedReaderCallBack {
+	Integer doSomethingWithReader(BufferedReader br) throws IOException;
+}
+
+// 리스트 3-34 BufferedReaderCallBack을 사용하는 템플릿 메서드
+public Integer fileReadTemplate(String filepath, BufferedReaderCallback callback) throws IOException {
+	BufferedReader br = null;
+		
+	try {
+		br = new BufferedReader(new FileReader(filepath));
+		// 콜백 오브젝트 호출
+		// 템플릿에서 만든 컨텍스트 정보인 BufferedReader를 전달해주고 콜백의 작업 결과를 받아둔다.
+		int ret = callback.doSomethingWithReader(br);
+		return ret;
+	} catch (IOException e) {
+		System.out.println(e.getMessage());
+		throw e;
+	} finally {
+		if (br != null) {
+			try { br.close(); }
+			catch (IOException e) { System.out.println(e.getMessage()); }
+		}
+	}
+}
+
+// 리스트 3-35 템플릿/콜백을 적용한 calcSum() 메서드
+public Integer calcSum(String filepath) throws IOException {
+	BufferedReaderCallBack sumCallback =
+	new BufferedReaderCallback() {
+		public Integer doSomethingWithReader(BufferedReader br) throws IOException {
+			Integer sum = 0;
+			String line = null;
+			while(line = br.readLine()) != null) {
+				sum += Integer.valueOf(line);
+			}
+			return sum;
+		}
+	};
+	// sumCallback 이란 익명 내부 클래스를 이용해서 fileReadTemplate를 호출
+	// fileReadTemplate에서 callback.doSomethingWithReader()를 이용해서 콜백 실행
+	return fileReadTemplate(filepath, sumCallback);
+}
+
+// 리스트 3-36 새로운 테스트 메서드를 추가한 CalSumTest
+public class CalcSumTest {
+	Calculator calculator;
+	String numFilePath;
+	
+	// 테스트 효율을 위해 미리 픽스처로 만들어둠.
+	@Before public void setUp() {
+		this.calculator = new Calculator();
+		this.numFilePath = getClass().getResource("numbers.txt").getPath();
+	}
+	
+	@Test public void sumOfNumbers() throws IOException {
+		assertThat(calculator.calcSum(this.numFilePath), is(10));
+	}
+	
+	@Test public void multiplyOfNumbers() throws IOException {
+		assertThat(calculator.calcMultiply(this.numFilePath), is(24));
+	}
+}
+
+// 리스트 3-37 곱을 계산하는 콜백을 가진 calcMultiply() 메서드
+public Integer calcMultiply(String filepath) throws IOException {
+	BufferedReaderCallBack multiplyCallback =
+	new BufferedReaderCallback() {
+		public Integer doSomethingWithReader(BufferedReader br) throws IOException {
+			Integer multiply = 1;
+			String line = null;
+			while(line = br.readLine()) != null) {
+				multiply *= Integer.valueOf(line);
+			}
+			return multiply;
+		}
+	};
+	// multiplyCallback 이란 익명 내부 클래스를 이용해서 fileReadTemplate를 호출
+	// fileReadTemplate에서 callback.doSomethingWithReader()를 이용해서 콜백 실행
+	return fileReadTemplate(filepath, multiplyCallback);
+}
+```
+
+* 템플릿/콜백의 재설계
+  * `calcSum()`, `calcMultiply()` 모두 숫자를 계산하는 부분 말고는 중복되는 부분이 많음.
+  * 해당 부분만 변경될 수 있도록 분리할 필요가 있음.
+
+```java
+// 리스트 3-38 라인별 작업을 정의한 콜백 인터페이스
+public interface LineCallback {
+	Integer doSomethingWithLine(String line, Integer value);
+}
+
+// 리스트 3-39 LineCallback을 사용하는 템플릿
+// int initVal: 계산 결과를 저장할 변수의 초기값
+public Integer lineReadTemplate(String filepath, LineCallback callback, int initVal) throws IOException {
+	BufferedReader br = null;
+	try {
+		br = new BufferedReader(new FileReader(filepath));
+		Integer res = initVal;
+		String line = null;
+		// while 루프 안에서 콜백을 호출
+		while((line = br.readLine()) != null) {
+			res = callback.doSomethingWithLine(line, res);
+		}
+		return res;
+	}
+	catch(IOException e) {
+		System.out.println(e.getMessage());
+		throw e;
+	}
+	finally {
+		if (br != null) {
+			try { br.close(); } 
+			catch(IOException e) { System.out.println(e.getMessage()); }
+		}
+	}
+}
+
+// 리스트 3-40 lineReadTemplate을 사용하도록 수정한 calSum(), calMultiply() 메서드
+public Integer calcSum(String filepath) throws IOException {
+	LineCallback sumCallback = 
+	new LineCallback() {
+		public Integer doSomethingWithLine(String line, Integer value) {
+			return value + integer.valueOf(line);
+		}
+	};
+	// sumCallback 이란 익명 내부 클래스를 이용해서 lineReadTemplate를 호출
+	// lineReadTemplate를 callback.doSomethingWithLine()를 이용해서 콜백 실행
+	return lineReadTemplate(filepath, sumCallback, 0);
+}
+
+public Integer calcMultiply(String filepath) throws IOException {
+	LineCallback multiplyCallback = 
+	new LineCallback() {
+		public Integer doSomethingWithLine(String line, Integer value) {
+			return value * integer.valueOf(line);
+		}
+	};
+	return lineReadTemplate(filepath, multiplyCallback, 1);
+}
+```
