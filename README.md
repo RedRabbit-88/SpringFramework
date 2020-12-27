@@ -844,3 +844,53 @@ public Integer calcMultiply(String filepath) throws IOException {
 	return lineReadTemplate(filepath, multiplyCallback, 1);
 }
 ```
+
+* 제네릭스를 이용한 콜백 인터페이스
+  * 지금까지는 템플릿과 콜백이 만들어내는 결과가 Integer로 고정되어 있음.
+  <br>-> 제네릭스를 활용하면 다양한 타입으로 활용 가능.
+
+```java
+// 리스트 3-41 타입 파라미터를 적용한 LineCallback
+public interface LineCallback<T> {
+	T doSomethingWithLine(String line, T value);
+}
+
+// 리스트 3-42 타입 파라미터를 추가해서 제네릭 메서드로 만든 lineReadTemplate()
+public <T> T lineReadTemplate(String filepath, LineCallback<T> callback, T initVal) throws IOException {
+	BufferedReader br = null;
+	try {
+		br = new BufferedReader(new FileReader(filepath));
+		T res = initVal; // 제네릭스로 변경
+		String line = null;
+		// while 루프 안에서 콜백을 호출
+		while((line = br.readLine()) != null) {
+			res = callback.doSomethingWithLine(line, res);
+		}
+		return res;
+	}
+	catch(IOException e) { ... }
+	finally { ... }
+}
+
+// 리스트 3-43 문자열 연결 기능 콜백을 이용해 만든 concatenate() 메서드
+public String concatenate(String filepath) throws IOException {
+	LineCallback<String> concatenateCallback = 
+	new LineCallback<String>() {
+		public String doSomethingWithLine(String line, Stringvalue) {
+			return value + line;
+		}
+	};
+	// 템플릿 메서드의 T는 모두 String이 된다.
+	return lineReadTemplate(filepath, concatenateCallback, "");
+}
+
+// 리스트 3-44 concatenate() 메서드에 대한 테스트
+@Test public void concatenateStrings() throws IOException {
+	assertThat(calculator.concatenate(this.numFilePath), is("1234"));
+}
+```
+
+
+### 3.6 스프링의 JdbcTemplate
+
+* 
