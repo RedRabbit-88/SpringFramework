@@ -99,8 +99,9 @@ public void deleteAll() throws SQLException {
 ```
 
 * 메서드 추출
-  * 변하는 부분을 메서드로 추출 -> 별로 유용하지 않다.
-  * 템플릿 메서드 패턴을 적용 -> 상속을 통해 기능을 확장해서 사용
+  * 변하는 부분을 메서드로 추출하는 건 별로 유용하지 않다.
+  * 템플릿 메서드 패턴을 적용하면 상속을 통해 기능을 확장해서 사용함.
+  <br>-> DAO 로직마다 상속을 통해 새로운 클래스를 만들어야 하는 단점!
 
 ```java
 // 리스트 3-6 변하는 부분을 메서드로 추출한 후의 deleteAll()
@@ -136,6 +137,7 @@ public class UserDaoDeleteAll extends UserDao {
 
 * 전략 패턴의 적용
   * 오브젝트를 아예 둘로 분리하고 클래스 레벨에서는 인터페이스를 통해서만 의존하도록 만든다.
+  * 컨텍스트의 contextMethod(): deleteAll()에서 변하지 않는 부분
 
 * deleteAll()의 컨텍스트
   * DB 커넥션 가져오기
@@ -144,6 +146,7 @@ public class UserDaoDeleteAll extends UserDao {
   * 전달받은 PreparedStatement 실행하기
   * 예외가 발생하면 이를 다시 메서드 밖으로 던지기
   * 모든 경우에 만들어진 PreparedStatement와 Connection을 적절히 닫아주기
+  <br>-> 이 부분을 컨텍스트 메서드로 분류한다!
 
 ```java
 // 리스트 3-8 StatementStrategy 인터페이스
@@ -182,10 +185,13 @@ public void deleteAll() throws SQLException {
 ```
 
 * DI 적용을 위한 클라이언트/컨텍스트 분리
+  * 전략 패턴에 따르면 컨텍스트가 어떤 전략을 사용하게 할 것인가는 컨텍스트를 사용하는 **앞단의 클라이언트가 결정**
+  * 클라이언트가 구체적인 전략의 하나를 선택하고 오브젝트로 만들어서 컨텍스트에 전달
+  * 컨텍스트는 전달받은 Strategy 구현 클래스의 오브젝트를 사용
 
 ```java
 // 리스트 3-11 메서드로 분리한 try/catch/finally 컨텍스트 코드
-// stmt: 클라이언트가 컨텍스트를 호출할 때 넘겨줄 전략 파라미터
+// StatementStrategy stmt: 클라이언트가 컨텍스트를 호출할 때 넘겨줄 전략 파라미터
 public void jdbcContextWithStatementStrategy(StatementStrategy stmt) throws SQLException {
 	Connection c = null;
 	PreparedStatement ps = null;
@@ -223,7 +229,7 @@ public void deleteAll() throws SQLException {
 
 ### 3.3 JDBC 전략 패턴의 최적화
 
-* 개선된 DAO 메메서드는 저략 패턴의 클라이언트로서 컨텍스트에 해당하는 `jdbcContextWithStatementStrategy()` 메서드에 적절한 전략,
+* 개선된 DAO 메서드는 전략 패턴의 클라이언트로서 컨텍스트에 해당하는 `jdbcContextWithStatementStrategy()` 메서드에 적절한 전략,
 <br>즉 바뀌는 로직을 제공해주는 방법으로 사용할 수 있다.
   * 컨텍스트: PreparedStatement를 실핸하는 JDBC의 작업 흐름
   * 전략: PreparedStatement를 생성하는 것
@@ -273,7 +279,6 @@ public void add(User user) throws SQLException {
 * 로컬 클래스
   * StatementStrategy 전략 클래스를 매번 독립된 파일로 만들지 말고 UserDao 클래스 안에 내부 클래스로 정의
   * 클래스가 내부 클래스이기 때문에 자신이 선언된 곳의 정보에 접근할 수 있음.
-
 
 * 중첩 클래스의 종류
   * 중첩 클래스: 다른 클래스 내부에 정의되는 클래스
@@ -462,12 +467,10 @@ public class UserDao {
 <br>런타임 시에 DI 방식으로 외부에서 오브젝트를 주입해주는 방식을 사용하긴 했지만
 <br>클래스 레벨에서 의존관계를 맺었기 때문에 의존 오브젝트의 구현 클래스 변경은 불가능.
 
-* DI 개념을 충실히 따르자면, 인터페이스를 사이에 둬서
-<br>클래스 레벨에서는 의존관계가 고정되지 않게 하고
+* DI 개념을 충실히 따르자면, 인터페이스를 사이에 둬서 클래스 레벨에서는 의존관계가 고정되지 않게 하고
 <br>런타임 시에 의존할 오브젝트와의 관계를 다이내믹하게 주입해주는게 맞음.
 
-* 그러나 스프링의 DI는 넓게 보자면 객체의 생성과 관계설정에 대한 제어권한을
-<br>오브젝트에서 제거하고 외부로 위임했다는 IoC라는 개념을 포괄함.
+* 스프링의 DI는 넓게 보자면 객체의 생성과 관계설정에 대한 제어권한을 오브젝트에서 제거하고 외부로 위임했다는 IoC라는 개념을 포괄함.
 <br>-> 이런 의미에서는 JdbcContext를 스프링을 이용해 UserDao에서 사용한 건 DI라고 볼 수 있음.
 
 * JdbcContext를 UserDao와 DI 구조로 만들어야 하는 이유
@@ -535,7 +538,7 @@ public class UserDao {
 
 ### 3.5.1 템플릿/콜백의 동작원리
 
-* 템플릿: 고정된 작업 흐름을 가진 코드를 재사용한다는 의미에서 명명
+* 템플릿: 고정된 작업 흐름을 가진 코드를 재사용
 
 * 콜백: 템플릿 안에서 호출되는 것을 목적으로 만들어진 오브젝트
 
@@ -549,13 +552,11 @@ public class UserDao {
 <br>콜백의 메서드인 makePreparedStatement()을 실행할 때 Connection 오브젝트를 파라미터로 넘겨줌.
 
 * 템플릿/콜백의 작업 흐름
-  * 클라이언트(UserDao)의 역할은 템플릿 안에서 실행될 로직을 담은 콜백 오브젝트를 만들고,
-  <br>콜백이 참조할 정보를 제공하는 것.
+  * 클라이언트(UserDao)의 역할은 템플릿 안에서 실행될 로직을 담은 콜백 오브젝트를 만들고, 콜백이 참조할 정보를 제공하는 것.
   <br>만들어진 콜백은 클라이언트가 템플릿의 메서드를 호출할 때 파라미터로 전달됨.
   * 템플릿(workWithStatementStrategy())은 정해진 작업 흐름을 따라 작업을 진행하다가 내부에서 생성한
   <br>참조정보를 가지고 콜백 오브젝트의 메서드를 호출. (StatementStrategy)
-  <br>콜백은 클라이언트 메서드에 있는 정보와 템플릿이 제공한 참조정보를 이용해서 작업을 수행하고
-  <br>그 결과를 다시 템플릿에 돌려줌.
+  * 콜백은 클라이언트 메서드에 있는 정보와 템플릿이 제공한 참조정보를 이용해서 작업을 수행하고 그 결과를 다시 템플릿에 돌려줌.
   * 템플릿은 콜백이 돌려준 정보를 사용해서 작업을 마저 수행. 경우에 따라 최종 결과를 클라이언트에 다시 돌려주기도 함.
 
 * 클라이언트가 템플릿 메서드를 호출하면서 콜백 오브젝트를 전달하는 것은 메서드 레벨에서 일어나는 DI.
@@ -893,4 +894,186 @@ public String concatenate(String filepath) throws IOException {
 
 ### 3.6 스프링의 JdbcTemplate
 
-* 
+* 스프링은 JDBC를 이용하는 DAO에서 사용할 수 있도록 준비된 다양한 템플릿과 콜백을 제공
+
+* `JdbcTemplate`
+<br>스프링이 제공하는 JDBC 코드용 기본 템플릿
+
+```java
+// 리스트 3-45 JdbcTemplate의 초기화를 위한 코드
+public class UserDao {
+	private JdbcTemplate jdbcTemplate;
+	private DataSource dataSource;
+		
+	public void setDataSource(DataSource dataSource) {
+		this.jdbcTemplate = new JdbcTemplate(dataSource);
+			
+		this.dataSource = dataSource;
+	}
+	...
+}
+```
+
+
+### 3.6.1 update()
+
+* JdbcContext vs. JdbcTemplate
+  * 인터페이스: `StatementStrategy` -> `PreparedStatementCreator`
+  * 메서드: `makePreparedStatement()` -> `createPreparedStatement`
+
+```java
+public void deleteAll() throws SQLException {
+	// 리스트 3-46 JdbcTemplate을 적용
+	this.jdbcTemplate.update(new PreparedStatementCreator() {
+		@Override
+		public PreparedStatement createPreparedStatement(Connection con) throws SQLException {
+			return con.prepareStatement("delete from users");
+		}
+	});
+	
+	// 리스트 3-47 내장 콜백을 사용하는 update()
+	this.jdbcTemplate.update("delete from users");
+}
+
+// 내장 콜백을 사용하는 update()로 만든 add() 메서드
+public void add(final User user) throws SQLException {
+	this.jdbcTemplate.update("insert into users(id, name, password) values(?,?,?)",
+					user.getId(), user.getName(), user.getPassword());
+}
+```
+
+
+### 3.6.2 queryForInt()
+
+* `query()` 메서드
+<br>`PreparedStatementCreator` 콜백과 `ResultSetExtractor` 콜백을 파라미터로 받음
+
+* `ResultSetExtractor`
+<br>`PreparedStatement`의 쿼리를 실행해서 얻은 `ResultSet`을 전달받는 콜백
+  * 템플릿이 제공하는 `ResultSet`을 이용해 원하는 값을 추출해서 템플릿에 전달
+  * 템플릿은 나머지 작업을 수행한 뒤에 그 값을 `query()` 메서드의 리턴값으로 돌려줌.
+
+```java
+// 리스트 3-49 JdbcTemplate을 이용해 만든 getCount()
+// getCount(): SQL 쿼리를 실행하고 ResultSet을 통해 결과 값을 가져오는 코드
+public int getCount() {
+	return this.jdbcTemplate.query(new PreparedStatementCreator() {
+		@Override
+		public PreparedStatement createPreparedStatement(Connection con) throws SQLException {
+			return con.prepareStatement("select count(*) from users");
+		}
+	}, new ResultSetExtractor<Integer>() {
+		@Override
+		public Integer extractData(ResultSet rs) throws SQLException, DataAccessException {
+			rs.next();
+			return rs.getInt(1);
+		}		
+	});
+}
+
+// 리스트 3-50 queryForInt()를 사용하도록 수정한 getCount()
+public int getCount() {
+	return this.jdbcTemplate.queryForInt("select count(*) from users");
+}
+```
+
+
+### 3.6.3 queryForObject()
+
+* `get()` 메서드를 변환하려면 `ResultSet`의 결과를 User 오브젝트를 만들어 프로퍼티에 넣어줘야 함.
+
+* `RowMapper` 콜백
+<br>`ResultSet`의 row 하나를 매핑하기 위해 사용되며 여러 번 호출될 수 있음.
+
+* `ResultSetExtractor`는 `ResultSet`을 한 번 전달받아 알아서 추출 작업을 모두 진행하고 최종 결과만 리턴
+
+* `queryForObject()` 메서드
+  * 1번째 파라미터: `PreparedStatement`를 만들기 위한 SQL
+  * 2번째 파라미터: 1번에 바인딩할 값들
+
+```java
+// 리스트 3-51 queryForObject()와 RowMapper를 적용한 get() 메서드
+public User get(String id) {
+	return this.jdbcTemplate.queryForObject("select * from users where id = ?",
+		new Object[] {id}, // SQL에 바인딩할 파라미터 값. 가변인자 대신 배열을 사용
+		new RowMapper<User>() { // ResultSet 한 row의 결과를 오브젝트에 매핑해주는 RowMapper 콜백
+			public User mapRow(ResultSet rs, int rowNum) throws SQLException {
+				User user = new User();
+				user.setId(rs.getString("id"));
+				user.setName(rs.getString("name"));
+				user.setPassword(rs.getString("password"));
+				return user;
+			}
+		});
+}
+```
+
+* `queryForObject()`는 SQL을 실행하면 1개의 row만 얻을 것이라고 기대함.
+<br>`ResultSet`의 `next()`를 실행해서 첫 번째 row로 이동시킨 후에 `RowMapper` 콜백을 호출
+
+* `queryForObject()` 이용 시 조회 결과가 없는 예외상황은 어떻게 처리할까? **필요없음**
+  * `queryForObject()`는 SQL을 실행해서 받은 row의 개수가 하나가 아니라면 예외를 던짐.
+  <br>-> `EmptyResultDataAccessException`
+
+
+### 3.6.4 query()
+
+* 여러 row를 테이블에서 가져올 때는 오브젝트가 아닌 오브젝트의 컬렉션으로 만듬.
+
+```java
+// 리스트 3-52 getAll()에 대한 테스트
+@Test
+public void getAll()  {
+	dao.deleteAll();
+	
+	List<User> users0 = dao.getAll();
+	assertThat(users0.size(), is(0));
+		
+	dao.add(user1); // Id: gyumee
+	List<User> users1 = dao.getAll();
+	assertThat(users1.size(), is(1));
+	checkSameUser(user1, users1.get(0));
+		
+	dao.add(user2); // Id: leegw700
+	List<User> users2 = dao.getAll();
+	assertThat(users2.size(), is(2));
+	checkSameUser(user1, users2.get(0));  
+	checkSameUser(user2, users2.get(1));
+		
+	dao.add(user3); // Id: bumjin
+	List<User> users3 = dao.getAll();
+	assertThat(users3.size(), is(3));
+	checkSameUser(user3, users3.get(0));  
+	checkSameUser(user1, users3.get(1));  
+	checkSameUser(user2, users3.get(2));  
+}
+
+// User 오브젝트의 내용을 비교하는 검증 코드. 반복 사용을 위해 분리.
+private void checkSameUser(User user1, User user2) {
+	assertThat(user1.getId(), is(user2.getId()));
+	assertThat(user1.getName(), is(user2.getName()));
+	assertThat(user1.getPassword(), is(user2.getPassword()));
+}
+```
+
+* `query()`의 리턴 타입은 `List<T>`
+<br>`query()`는 제네릭 메서드로 타입은 파라미터로 넘기는 `RowMapper<T>` 콜백 오브젝트에서 결정됨.
+
+```java
+// 리스트 3-53 getAll() 메서드
+public List<User> getAll() {
+	// query() 템플릿은 SQL을 실행해서 얻은 ResultSet의 모든 row를 열람하면서 row마다 RowMapper 콜백을 호출
+	return this.jdbcTemplate.query("select * from users order by id",
+		// RowMapper는 현재 row의 내용을 User 타입 오브젝트에 매핑해서 돌려줌
+		new RowMapper<User>() { // RowMapper<User>: 리턴 타입이 User로 결정됨.
+			public User mapRow(ResultSet rs, int rowNum) throws SQLException {
+				// 현재 row의 내용을 User 타입 오브젝트에 매핑해서 돌려줌.
+				User user = new User();
+				user.setId(rs.getString("id"));
+				user.setName(rs.getString("name"));
+				user.setPassword(rs.getString("password"));
+				return user;
+			}
+		});
+}
+```
