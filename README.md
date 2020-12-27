@@ -429,7 +429,7 @@ public class UserDao {
 ```
 
 * UserDao는 이제 JdbcContext에 의존하고 있음. 하지만 JdbcContext의 경우 인터페이스가 아닌 구체 클래스임.
-<br>**스프링의 DI는 기본적으로 인터페이스를 사의에 두고 의존 클래스를 바꿔서 사용하도록 하는 게 목적**
+<br>**스프링의 DI는 기본적으로 인터페이스를 사이에 두고 의존 클래스를 바꿔서 사용하도록 하는 게 목적**
 
 ```java
 // 리스트 3-23 JdbcContext 빈을 추가하도록 수정한 설정파일
@@ -458,3 +458,66 @@ public class UserDao {
 
 ### 3.4.2 JdbcContext의 특별한 DI
 
+* UserDao와 JdbcContext 사이에는 인터페이스를 사용하지 않고 DI를 적용함.
+<br>런타임 시에 DI 방식으로 외부에서 오브젝트를 주입해주는 방식을 사용하긴 했지만
+<br>클래스 레벨에서 의존관계를 맺었기 때문에 의존 오브젝트의 구현 클래스 변경은 불가능.
+
+* DI 개념을 충실히 따르자면, 인터페이스를 사이에 둬서
+<br>클래스 레벨에서는 의존관계가 고정되지 않게 하고
+<br>런타임 시에 의존할 오브젝트와의 관계를 다이내믹하게 주입해주는게 맞음.
+
+* 그러나 스프링의 DI는 넓게 보자면 객체의 생성과 관계설정에 대한 제어권한을
+<br>오브젝트에서 제거하고 외부로 위임했다는 IoC라는 개념을 포괄함.
+<br>-> 이런 의미에서는 JdbcContext를 스프링을 이용해 UserDao에서 사용한 건 DI라고 볼 수 있음.
+
+* JdbcContext를 UserDao와 DI 구조로 만들어야 하는 이유
+  * JdbcContext가 스프링 컨테이너의 싱글톤 레지스트리에서 관리되는 싱글톤 빈이 되기 때문.
+    * JdbcContext는 자체로 변경되는 상태정보를 갖고 있지는 않지만 싱글톤으로 등록되어 공유되는게 이상적
+  * **JdbcContext가 DI를 통해 다른 빈에 의존하고 있기 때문.**
+    * JdbcContext는 dataSource 프로퍼티를 통해 DataSource 오브젝트를 주입받고 있음.
+    * DI를 위해서는 주입되는 오브젝트와 주입받는 오브젝트 양쪽 모두 스프링 빈으로 등록되어야 함.
+    * JdbcContext는 다른 빈을 DI 받기 위해서라도 스프링 빈으로 등록되어야 함.
+
+* 코드를 이용하는 수동 DI
+  * JdbcContext를 스프링 빈으로 등록해서 UserDao에 DI 하는 대신 사용 가능한 방법도 있음.
+    * UserDao 내부에서 직접 DI를 적용.
+    * 이럴 경우 싱글톤으로 관리될 수 없다. 사용 시마다 생성과 초기화를 해줘야 함.
+  * DI 컨테이너를 통해 DI 받고 싶지 않을 경우
+    * JdbcContext에 대한 제어권을 갖고 생성과 관리를 담당하는 UserDao에게 DI까지 위임.
+
+```java
+// 리스트 3-24 jdbcContext 빈을 제거한 설정파일
+<beans>
+	<bean id="userDao" class="springbook.user.dao.UserDao">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+	
+	<bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource" >
+	...
+	</bean>
+</beans>
+
+// 리스트 3-25 JdbcContext 생성과 DI 작업을 수행하는 setDataSource() 메서드
+public class UserDao {
+	...
+	private JdbcContext jdbcContext;
+	
+	// 수정자 메서드이면서 JdbcContext에 대한 생성, DI 작업을 동시에 수행
+	public void setDataSource(DataSource dataSource) {
+		// JdbcContext 생성 (IoC)
+		this.jdbcContext = new JdbcContext();
+		// 의존 오브젝트 주입 (DI)
+		this.jdbcContext.setDataSource(dataSource);
+		// 아직 JdbcContext를 적용하지 않은 메서드를 위해 저장
+		this.dataSource = dataSource;
+	}
+}
+```
+
+* `setDataSource()` 메서드는 DI 컨테이너가 DataSource 오브젝트를 주입해줄 때 호출됨.
+<br>이 때 JdbcContext에 대한 수동 DI 작업을 진행하면 됨.
+  * JdbcContext의 오브젝트를 만들어서 인스턴스 변수에 저장
+  * JdbcContext에 UserDao가 DI 받은 DataSource 오브젝트를 주입
+
+* 굳이 인터페이스를 두지 않아도 될 만큼 긴밀한 관계를 갖는 DAO 클래스와 JdbcContext를
+<br>어색하게 따로 빈으로 분리하지 않고 내부에서 직접 만들어 사용하면서도 다른 오브젝트에 대한 DI 적용 가능
