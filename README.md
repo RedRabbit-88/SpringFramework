@@ -521,3 +521,119 @@ public class UserDao {
 
 * 굳이 인터페이스를 두지 않아도 될 만큼 긴밀한 관계를 갖는 DAO 클래스와 JdbcContext를
 <br>어색하게 따로 빈으로 분리하지 않고 내부에서 직접 만들어 사용하면서도 다른 오브젝트에 대한 DI 적용 가능
+
+
+### 3.5 템플릿과 콜백
+
+* 템플릿/콜백 패턴
+  * 전략 패턴의 기본 구조에 익명 내부 클래스를 활용한 방식
+    * 템플릿: 전략 패턴의 컨텍스트
+    * 콜백: 익명 내부 클래스로 만들어지는 오브젝트
+  * 복잡하지만 바뀌지 않는 일정한 패턴을 갖는 작업 흐름이 존재하고
+  <br>그 중 일부분만 바꿔서 사용해야 하는 경우에 적합한 구조
+
+
+### 3.5.1 템플릿/콜백의 동작원리
+
+* 템플릿: 고정된 작업 흐름을 가진 코드를 재사용한다는 의미에서 명명
+
+* 콜백: 템플릿 안에서 호출되는 것을 목적으로 만들어진 오브젝트
+
+* 템플릿/콜백 패턴의 콜백은 보통 단일 메서드 인터페이스를 사용
+<br>템플릿의 작업 흐름 중 특정 기능을 위해 한 번 호출되는 경우가 일반적이기 때문
+<br>콜백은 일반적으로 하나의 메서드를 가진 인터페이스를 구현한 익명 내부 클래스로 만들어진다.
+
+* 콜백 인터페이스의 메서드에는 보통 파라미터가 존재.
+<br>템플릿의 작업 흐름 중에 만들어지는 컨텍스트 정보를 전달받을 때 사용됨.
+<br>ex) JdbcContext 클래스에서 템플릿인 workWithStatementStrategy 메서드에서
+<br>콜백의 메서드인 makePreparedStatement()을 실행할 때 Connection 오브젝트를 파라미터로 넘겨줌.
+
+* 템플릿/콜백의 작업 흐름
+  * 클라이언트(UserDao)의 역할은 템플릿 안에서 실행될 로직을 담은 콜백 오브젝트를 만들고,
+  <br>콜백이 참조할 정보를 제공하는 것.
+  <br>만들어진 콜백은 클라이언트가 템플릿의 메서드를 호출할 때 파라미터로 전달됨.
+  * 템플릿(workWithStatementStrategy())은 정해진 작업 흐름을 따라 작업을 진행하다가 내부에서 생성한
+  <br>참조정보를 가지고 콜백 오브젝트의 메서드를 호출. (StatementStrategy)
+  <br>콜백은 클라이언트 메서드에 있는 정보와 템플릿이 제공한 참조정보를 이용해서 작업을 수행하고
+  <br>그 결과를 다시 템플릿에 돌려줌.
+  * 템플릿은 콜백이 돌려준 정보를 사용해서 작업을 마저 수행. 경우에 따라 최종 결과를 클라이언트에 다시 돌려주기도 함.
+
+* 클라이언트가 템플릿 메서드를 호출하면서 콜백 오브젝트를 전달하는 것은 메서드 레벨에서 일어나는 DI.
+
+* 일반적인 DI라면 템플릿에 인스턴스 변수를 만들어두고 사용할 의존 오브젝트를 수정자 메서드로 받아서 사용
+
+* 템플릿/콜백 방식에서는 매번 메서드 단위로 사용할 오브젝트를 새롭게 전달받음.
+<br>콜백 오브젝트가 내부 클래스로서 자신을 생성한 클라이언트 메서드 내의 정보를 직접 참조.
+
+* 템플릿/콜백 방식은 전략 패턴과 DI의 장점을 익명 내부 클래스 사용 전략과 결합한 독특한 활용법
+
+
+### 3.5.2 편리한 콜백의 재활용
+
+* DAO 메서드에서 익명 내부 클래스를 사용하기 때문에 상대적으로 코드 작성 및 읽기가 불편함.
+
+```java
+// 리스트 3-26 익명 내부 클래스를 사용한 클라이언트 코드
+public void deleteAll() throws SQLException {
+	this.jdbcContext.workWithStatementStrategy(
+		// 변하지 않는 콜백 클래스 정의와 오브젝트 생성
+		new StatementStrategy() {
+			public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+				// 변하는 SQL 문장
+				return c.prepareStatement("delete from users");
+			}
+		}
+	);
+}
+
+// 리스트 3-27 변하지 않는 부분을 분리시킨 deleteAll() 메서드
+// 콜백 클래스 정의와 오브젝트 생성 부분을 분리시키고 SQL만 다르게 받는 방식
+public void deleteAll() throws SQLException {
+	// 변하는 SQL 문장
+	executeSql("delete from users");
+}
+
+private void executeSql(final String query) throws SQLException {
+	this.jdbcContext.workWithStatementStrategy(
+		new StatementStrategy() {
+			public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+				return c.prepareStatement(query);
+			}
+		}
+	);
+}
+```
+
+* 콜백과 템플릿의 결합
+  * 일반적으로 성격이 다른 코드들은 가능한 한 분리하는 편이 나음.
+  * 하나의 목적을 위해 서로 긴밀하게 연관되어 있는 코드들이면 한 군데 모여 있는 게 유리함.
+
+```java
+// 리스트 3-28 JdbcContext로 옮긴 executeSql() 메서드
+public class JdbcContext {
+	...
+	public void workWithStatementStrategy(StatementStrategy stmt) throws SQLException {
+	...
+	}
+	
+	// 메서드 접근자는 public으로 변경하여 외부에서 접근 허용
+	public void executeSql(final String query) throws SQLException {
+		this.jdbcContext.workWithStatementStrategy(
+			new StatementStrategy() {
+				public PreparedStatement makePreparedStatement(Connection c) throws SQLException {
+					return c.prepareStatement(query);
+				}
+			}
+		);
+	}
+}
+
+// 리스트 3-29 JdbcContext로 옮긴 executeSql()을 사용하는 deleteAll() 메서드
+ublic void deleteAll() throws SQLException {
+	this.jdbcContext.executeSql("delete from users");
+}
+```
+
+
+### 3.5.3 템플릿/콜백의 응용
+
