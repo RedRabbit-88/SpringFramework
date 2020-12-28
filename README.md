@@ -1077,3 +1077,113 @@ public List<User> getAll() {
 		});
 }
 ```
+
+* 문제가 발생하는 경우는 주로 예외적인 조건과 결과 때문
+<br>-> 미리 예외상황에 대한 일관성 있는 기준을 정해두고 이를 테스트로 만들어 검증해야 함.
+
+```java
+public void getAll() {
+	dao.deleteAll();
+	
+	List<User> users0 = dao.getAll();
+	// 데이터가 없을 때 크기가 0인 리스트 오브젝트가 리턴됐는지 확인
+	assertThat(users0.size(), is(0));
+	...
+}
+```
+
+* `getAll()`에서 `query()`의 결과에 손대지 않더라도 테스트 코드를 만드는게 좋다.
+<br>UserDao를 사용하는 입장에서는 사용방식은 관심없고, `getAll()` 메서드가 어떻게 실행되는지만 관심있음.
+<br>즉, UserDaoTest 클래스의 테스트는 UserDao의 `getAll()` 메서드에 대한 검증이 우선.
+
+
+### 3.6.5 재사용 가능한 콜백의 분리
+
+* UserDao의 모든 메서드가 JdbcTemplate을 사용하도록 변경되었으므로 DataSource를 사용할 일은 없다.
+<br>JdbcTemplate을 사용하면서 직접 DI 해주기 위해 필요한 DataSource를 전달받아야 하니 수정자 메서드는 유지.
+
+```java
+// 리스트 3-55 불필요한 DataSource 변수를 제거하고 남은 UserDao의 DI 코드
+public class UserDao {
+	private JdbcTemplate jdbcTemplate;
+	
+	public void setDataSource(DataSource dataSource) {
+		// DataSource 오브젝트는 JdbcTemplate을 만든 후 사용되지 않으니 저장 불필요.
+		this.jdbcTemplate = new JdbcTemplate(dataSource);
+	}
+	...
+}
+```
+
+* `RowMapper`가 `get()`, `getAll()`에서 중복된 소스로 사용 중.
+<br>-> 중복되는 소스는 분리!
+
+```java
+// 리스트 3-56 재사용 가능하도록 독립시킨 RowMapper
+public class UserDao {
+	private RowMapper<User> userMapper = 
+		new RowMapper<User>() {
+				public User mapRow(ResultSet rs, int rowNum) throws SQLException {
+				User user = new User();
+				user.setId(rs.getString("id"));
+				user.setName(rs.getString("name"));
+				user.setPassword(rs.getString("password"));
+				return user;
+			}
+		};
+	...
+}
+
+// 리스트 3-57 공유 userMapper를 사용하도록 수정한 get(), getAll()
+public User get(String id) {
+	return this.jdbcTemplate.queryForObject("select * from users where id = ?",
+			new Object[] {id}, this.userMapper);
+}
+
+public List<User> getAll() {
+	return this.jdbcTemplate.query("select * from users order by id", this.userMapper);
+}
+```
+
+* UserDao에는 User 정보를 CRUD하는 방법에 대한 핵심 로직만 담겨있음.
+
+* JdbcTemplate에서는 JDBC API를 사용하는 방식, 예외처리, 리소스의 반납, DB 연결 등의 책임과 관심이 담겨있음.
+<br>-> 변경한다고 해도 UserDao에는 아무런 영향을 주지 않는다.
+
+* 추가 개선 필요점
+  * userMapper를 UserDao 빈의 DI용 프로퍼티로 변경
+  * DAO 메서드에서 사용하는 SQL 문장을 외부 리소스에 담고 이를 읽어와 사용
+
+
+### 3.7 정리
+
+* JDBC와 같은 예외가 발생할 가능성이 있으며 공유 리소스의 반환이 필요한 코드는
+<br>반드시 try/catch/finally 블록으로 관리해야 함.
+
+* 일정한 작업 흐름이 반복되면서 그 중 일부 기능만 바뀌는 코드는 전략 패턴을 적용
+<br>바뀌지 않는 부분은 컨텍스트로, 바뀌는 부분은 전략으로 만들고 인터페이스를 통해 유연하게 관리
+
+* 같은 애플리케이션 안에서 여러 종류의 전략을 다이내믹하게 구성/사용해야 한다면?
+<br>-> 컨텍스트를 이용하는 클라이언트 메서드에서 직접 전략을 정의하고 제공하게 만든다.
+
+* 클라이언트 메서드 안에 익명 내부 클래스를 사용해서 전략 오브젝트를 구현하면
+<br>코드도 간결해지고 메서드의 정보를 직접 사용할 수 있어서 편리하다.
+
+* 컨텍스트가 하나 이상의 클라이언트 오브젝트에서 사용된다면 클래스를 분리해서 공유
+
+* 컨텍스트는 별도의 빈으로 등록해서 DI 받거나 클라이언트 클래스에서 직접 생성해서 사용.
+<br>클래스 내부에서 컨텍스트를 사용할 때 컨텍스트가 의존하는 외부의 오브젝트가 있다면 코드를 이용해서 직접 DI 가능.
+
+* 템플릿/콜백 패턴
+  * 단일 전략 메서드를 갖는 전략 패턴이면서 익명 내부 클래스를 사용해서 매번 전략을 새로 만들어 사용
+  * 컨텍스트 호출과 동시에 전략 DI를 수행
+
+* 콜백의 코드에도 일정 패턴이 반복된다면 콜백을 템플릿에 넣고 재활용하는 것이 편리.
+
+* 템플릿과 콜백의 타입이 다양하게 바뀔 수 있다면 제네릭스를 이용.
+
+* 스프링은 JDBC 코드 작성을 위해 JdbcTemplate을 기반으로 하는 다양한 템플릿과 콜백을 제공.
+
+* 템플릿은 한 번에 하나 이상의 콜백을 사용할 수도 있고, 하나의 콜백을 여러 번 호출할 수도 있음.
+
+* 템플릿/콜백을 설계할 때는 템플릿과 콜백 사이에 주고받는 정보에 관심을 둬야 함.
