@@ -11,3 +11,20 @@ https://github.com/RedRabbit-88/SpringFramework/wiki/2%EC%9E%A5-%ED%85%8C%EC%8A%
 
 ## 3장 템플릿
 https://github.com/RedRabbit-88/SpringFramework/wiki/3%EC%9E%A5-%ED%85%9C%ED%94%8C%EB%A6%BF#3%EC%9E%A5-%ED%85%9C%ED%94%8C%EB%A6%BF
+
+
+## 4장 예외
+
+
+### 4.1 사라진 SQLException
+
+```java
+// JdbcTemplate 적용 전
+public void deleteAll() throws SQLException {
+
+}
+
+// JdbcTemplate 적용 후
+public void deleteAll() throws SQLException {
+}
+```
