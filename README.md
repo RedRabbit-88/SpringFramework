@@ -164,7 +164,7 @@ public void add(User user) throws DuplicateUserIdException, SQLException {
     // 그런 기능을 가진 다른 SQLException을 던지는 메서드를 호출하는 코드
   } catch (SQLException e) {
     // ErrorCode가 MySQL의 "Duplicate Entry(1062)"면 예외 전환
-    if (e.getErrorCOde() == MysqlErrorNumbers.ER_DUP_ENTRY)
+    if (e.getErrorCde() == MysqlErrorNumbers.ER_DUP_ENTRY)
       throw DuplicateUserIdException();
     else
       throw e; // 그 외의 경우는 SQLException 그대로
@@ -186,4 +186,138 @@ try {
 
 
 ### 4.1.4 예외처리 전략
+
+* 체크 예외는 복구할 가능성이 있는 예외적인 상황이기 때문에 자바는 이를 처리하는 catch블록이나 throws 선언을 강제하고 있음.
+
+* 자바 엔터프라이즈 서버환경은 수많은 사용자가 동시에 요청을 보내고 각 요청이 독립적인 작업으로 취급됨.
+<br>-> 하나의 요청을 처리하는 중에 예외가 발생하면 해당 작업만 중단
+
+* 애플리케이션 차원에서 예외상황을 미리 파악하고, 예외가 발생하지 않도록 차단하는 게 좋음.
+
+* 대응이 불가능한 체크 예외라면 빨리 런타임 예외로 전환해서 던지는 게 나음.
+
+* 최근에 등장하는 표준 스텍 또는 오픈소스 프레임워크에서는
+<br>API가 발생시키는 예외를 체크 예외 대신 언체크 예외로 정의하는 게 일반적.
+
+```java
+// 리스트 4-13 아이디 중복 시 사용하는 예외
+public class DuplicateUserIdException extends RuntimeException {
+  public DuplicateUserIdException(Throwable cause) {
+    super(cause);
+  }
+}
+
+// 리스트 4-14 예외처리 전략을 적용한 add()
+public void add(User user) throws DuplicateUserIdException, SQLException {
+  try {
+    // JDBC를 이용해 user 정보를 DB에 추가하는 코드 또는
+    // 그런 기능을 가진 다른 SQLException을 던지는 메서드를 호출하는 코드
+  } catch (SQLException e) {
+    if (e.getErrorCode() == MysqlErrorNumbers.ER_DUP_ENTRY)
+      throw new DuplicateUserIdException(e); // 예외 전환
+    else
+      throw new RuntimeException(e); // 예외 포장
+  }
+}
+```
+
+* 리스트 4-14
+  * 중복 ID 상황 처리를 위해서는 DuplicateUserIdException을 사용
+  * 그 외의 경우에는 RuntimeException을 통해 언체크 예외로 처리
+
+* **애플리케이션 예외**
+<br>시스템 또는 외부의 예외상황이 원인이 아니라 애플리케이션 자체의 로직에 의해 의도적으로 발생시키고,
+<br>반드시 catch 해서 무엇인가 조치를 취하도록 요구하는 예외
+
+* 예시: 사용자가 요청한 금액을 은행계좌에서 출금하는 기능을 가진 메서드
+  * 방법1: 정상적인 출금처리를 했을 경우와 잔고 부족이 발생했을 경우에 각각 다른 종류의 리턴값을 돌려주는 방법
+    * 리턴값으로 결과를 확인하고, 예외상황을 체크하면 불편
+    * 예외상황에 대한 리턴 값을 명확하게 코드화하고 잘 관리하지 않으면 혼란 발생
+    * 결과 값을 확인하는 조건문이 자주 등장
+  * 방법2: 정상적인 흐름을 따르는 코드는 그대로 두고, 잔고 부족과 같은 예외 상황에서는 비즈니스적인 의미를 띈 예외를 던지는 방법
+    * 사용하는 예외는 의도적으로 체크 예외로 생성
+
+```java
+// 리스트 4-15 애플리케이션 예외를 사용한 코드
+try {
+  BigDecimal balance = account.withdraw(amount);
+  ...
+  // 정상적인 처리 결과를 출력하도록 진행
+} catch (InsufficientBalanceException e) { // 체크 예외
+  // InsufficientBalanceException에 담긴 인출 가능한 잔고금액 정보를 가져옴
+  BigDecimal availFunds = e.getAvailFunds();
+  ...
+  // 잔고 부족 안내 메시지를 준비하고 이를 출력하도록 진행
+}
+```
+
+
+### 4.1.5 SQLException은 어떻게 됐나?
+
+* SQLException은 복구 가능한 예외인가? 99% 복구 불가능
+<br>-> 언체크/런타임 예외를 통한 예외처리 전략을 적용해야 함.
+
+* JdbcTemplate 템플릿과 콜백 안에서 발생하는 모든 SQLException은 런타임 예외인 `DataAccessException`으로 포장해서 던져짐.
+
+
+### 4.2 예외 전환
+
+* 예외 전환의 목적 2가지
+  * 런타임 예외로 포장해서 불필요한 catch/throws를 줄여주는 것
+  * 로우레벨의 예외를 좀 더 의미 있고 추상화된 예외로 바꿔서 던져주는 것
+
+* 스프링의 JdbcTemplate이 던지는 `DataAccessException`은 런타임 예외로 SQLException을 포장해주는 역할
+
+
+### 4.2.1 JDBC의 한계
+
+* JDBC는 자바를 이용해 DB에 접근하는 방법을 추상화된 API 형태로 정의해놓고,
+<br>각 DB 업체가 JDBC 표준을 따라 만들어진 드라이버를 제공하게 해 줌.
+  * DB마다 내부 구현은 다르지만 Connection, Statement, ResultSet 등의 표준 인터페이스를 통해 기능을 제공
+
+* 첫 번째 문제: JDBC 코드에서 사용하는 SQL
+  * 대부분의 DB는 표준을 따르지 않는 비표준 문법과 기능도 제공
+  * 작성된 비표준 SQL은 DAO에 들어가고, DAO는 특정 DB에 종속적인 코드가 됨.
+  * 해결책
+    * 호환 가능한 표준 SQL만 사용하는 방법 -> 말도 안됨!
+    * DB별로 별도의 DAO를 만들거나 SQL을 외부에 독립시켜서 DB에 따라 변경해서 사용하는 방법
+
+* 두 번째 문제: SQLException
+  * DB마다 SQL만 다른 것이 아니라 에러의 종류와 원인도 제각각
+  <br>-> JDBC는 데이터 처리 중에 발생한 다양한 예외를 SQLException에 담아버림.
+  <br>`if (e.getErrorCode() == MysqlErrorNumbers.ER_DUP_ENTRY)` -> MySQL 전용코드. 다른 DB 호환 불가!
+  * SQLException은 예외가 발생했을 떄의 DB 상태를 담은 SQL 상태정보를 부가적으로 제공
+    * `getSQLState()` 메서드로 예외상황에 대한 상태정보를 가져올 수 있음.
+    * 문제는 DB의 JDBC 드라이버에서 SQLException을 담을 상태코드를 정확하게 만들어주지 않음.
+
+
+### 4.2.2 DB 에러 코드 매핑을 통한 전환
+
+* SQL 상태 코드
+  * JDBC 드라이버를 만들 때 들어가는 것
+  * 같은 DB라고 하더라도 드라이버를 만들 떄마다 달라질 수 있음
+
+* DB 에러 코드
+  * DB에서 직접 제공
+  * 버전이 올라가더라도 어느 정도 일관성이 유지됨.
+
+```java
+// 리스트 4-18 중복 키 예외의 전환
+public void add() throws DuplicateUserIdException { // 애플리케이션 레벨의 체크 예외
+  try {
+    // jdbcTemplate을 이용해 User를 add하는 코드
+  } catch (DuplicateKeyException e) {
+    // 로그를 남기는 등의 필요한 작업
+    throw new DuplicateUserIdException(e); // 예외 전환 시 원인이 되는 예외를 중첩하는 게 좋음.
+  }
+}
+```
+
+
+### 4.2.3 DAO 인터페이스와 DataAccessException 계층구조
+
+* `DataAccessException`은 JDBC의 SQLException을 전환하는 용도로만 만들어진 게 아니라
+<br>JDBC 외의 자바 데이터 액세스 기술에서 발생하는 예외에도 적용 가능.
+
+* `DataAccessException`은 의미가 같은 예외라면 데이터 액세스 기술의 종류와 상관없이 일관된 예외가 발생하도록 만들어줌.
 
