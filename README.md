@@ -89,7 +89,7 @@ public class User {
 		this.login = login;
 		this.recommend = recommend;
 	}
-  ...
+	...
 	public Level getLevel() {
 		return level;
 	}
@@ -97,7 +97,7 @@ public class User {
 	public void setLevel(Level level) {
 		this.level = level;
 	}
-  ...
+	...
 }
 
 // 리스트 5-5 수정된 테스트 픽스처
@@ -111,7 +111,7 @@ public class UserDaoTest {
 		this.user2 = new User("leegw700", "이길원", "springno2", Level.SILVER, 55, 10);
 		this.user3 = new User("bumjin", "박범진", "springno3", Level.GOLD, 100, 40);
 	}
-  ...
+	...
 }
 ```
 
@@ -134,9 +134,9 @@ public class UserDaoJdbc implements UserDao {
 				return user;
 			}
 		};
-  ...
+	...
   
-  // DB에 입력할 때는 Level을 int 타입으로 변경해서 입력
+	// DB에 입력할 때는 Level을 int 타입으로 변경해서 입력
 	public void add(User user) {
 		this.jdbcTemplate.update(
 				"insert into users(id, name, password, level, login, recommend) " +
