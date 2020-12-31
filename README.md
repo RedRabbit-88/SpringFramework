@@ -150,3 +150,147 @@ public class UserDaoJdbc implements UserDao {
 
 ### 5.1.2 사용자 수정 기능 추가
 
+* 수정 기능 테스트 추가
+  * 추가된 Level, Login, Recommend가 정상적으로 작동하는지 확인하도록 테스트 메서드 보완
+```java
+// 리스트 5-10 사용자 정보 수정 메서드 테스트
+@Test
+public void update() {
+	dao.deleteAll();
+	dao.add(user1);
+	
+	// 픽스처에 들어 있는 정보를 변경해서 수정 메서드 호출
+	user1.setName("오민규");
+	user1.setPassword("springno6");
+	user1.setLevel(Level.GOLD);
+	user1.setLogin(1000);
+	user1.setRecommend(999);
+	dao.update(user1);
+	
+	User user1update = dao.get(user1.getId());
+	checkSameUser(user1, user1update);
+}
+```
+
+* UserDao와 UserDaoJdbc 수정
+  * 각각 update() 메서드를 추가 및 구현
+```java
+// 리스트 5-11 update() 메서드 추가
+public interface UserDao {
+	...
+	public void update(User user);
+}
+
+// 리스트 5-12 사용자 정보 수정용 update() 메서드
+public void update(User user) {
+	this.jdbcTemplate.update(
+		"update users set name = ?, password = ?, level = ?, login = ?, " +
+		"recommend = ? where id = ? ", user.getName(), user.getPassword(), 
+		user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getId());
+}
+```
+
+* 수정 테스트 보완
+  * 기존의 update() 테스트는 수정할 row의 데이터가 변경되었는지만 확인함.
+  * 수정하지 않아야 할 row의 내용이 그대로 남아있는지도 확인 필요.
+  * 보완방법
+    * JdbcTemplate의 update()가 돌려주는 리턴값을 확인(업데이트한 row의 갯수)
+    * 테스트를 보강해서 원하는 사용자 외의 정보는 변경되지 않았음을 확인
+```java
+// 리스트 5-13 보완된 update() 테스트
+@Test
+public void update() {
+	dao.deleteAll();
+		
+	dao.add(user1);		// 수정할 사용자
+	dao.add(user2);		// 수정하지 않을 사용자
+		
+	user1.setName("오민규");
+	user1.setPassword("springno6");
+	user1.setLevel(Level.GOLD);
+	user1.setLogin(1000);
+	user1.setRecommend(999);
+		
+	dao.update(user1);
+		
+	User user1update = dao.get(user1.getId());
+	checkSameUser(user1, user1update);
+	User user2same = dao.get(user2.getId());
+	checkSameUser(user2, user2same);
+}
+```
+
+
+### 5.1.3 UserService.upgradeLevels()
+
+* 사용자 관리 로직은 어디에 두는 것이 좋을까?
+  * UserDao에 놓기에는 적당하지 않음
+  * DAO는 데이터 관리를 담당하지 비즈니스 로직을 두는 곳이 아님.
+  <br>-> **비즈니스 로직을 담을 클래스를 추가! (UserService)**
+
+* UserService 클래스
+  * 비즈니스 로직을 담당하는 클래스
+  * UserDao의 구현 클래스가 변경되도 영향받지 않도록 해야함.
+  * 데이터 액세스 로직이 변경되었다고 비즈니스 로직 코드를 수정하면 안 됨.
+  <br>-> **DAO의 인터페이스를 사용하고 DI를 적용해야 한다.**
+
+* UserService 클래스와 빈 등록
+```java
+// 리스트 5-14 UserService 클래스
+public class UserService {
+	private UserDao userDao;
+
+	public void setUserDao(UserDao userDao) {
+		this.userDao = userDao;
+	}
+}
+
+// 리스트 5-15 userService 빈 설정
+<bean id="userService" class="springbook.user.service.UserService">
+	<property name="userDao" ref="userDao" />
+</bean>
+
+<bean id="userDao" class="springbook.dao.UserDaoJdbc">
+	<property name="dataSource" ref="dataSource" />
+</bean>
+```
+
+* UserServiceTest 테스트 클래스
+  * 테스트 클래스에서 UserService 사용을 위해 `@AutoWired` 적용
+```java
+// 리스트 5-16 UserServiceTest 클래스
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations="/test-applicationContext.xml")
+public class UserServiceTest {
+	@Autowired UserService userService;
+}
+```
+
+* upgradeLevels() 메서드 생성 및 테스트
+  * 요구사항에 맞게 upgradeLevels() 메서드를 작성
+  * 테스트를 위해 setUp() 메서드에 테스트 데이터 생성
+```java
+// 리스트 5-20 사용자 레벨 업그레이드 테스트
+@Test
+public void upgradeLevels() throws Exception {
+	userDao.deleteAll();
+	for(User user : users) userDao.add(user);
+		
+	userService.upgradeLevels();
+		
+	checkLevel(users.get(0), Level.BASIC);
+	checkLevel(users.get(1), Level.SILVER);
+	checkLevel(users.get(2), Level.SILVER);
+	checkLevel(users.get(3), Level.GOLD);
+	checkLevel(users.get(4), Level.GOLD);
+}
+
+private void checkLevel(User user, Level expectedLevel) {
+	User userUpdate = userDao.get(user.getId());
+	assertThat(userUpdate.getLevel(), is(expectedLevel));
+}
+```
+
+
+### 5.1.4 UserService.add()
+
