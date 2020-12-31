@@ -294,3 +294,229 @@ private void checkLevel(User user, Level expectedLevel) {
 
 ### 5.1.4 UserService.add()
 
+* User를 처음 생성할 때 Level.BASIC으로 설정하는 로직은 어디에 담아야 할까?
+  * UserDaoJdbc.add() 메서드는 적합하지 않다. 비즈니스 로직을 DAO에 심으면 안 됨.
+  * 사용자 관리 로직을 담고 있는 UserService가 적절함.
+
+
+### 5.1.5 코드 개선
+
+* 작성된 코드를 살펴볼 떄 중점적으로 봐야할 것들
+  * 코드에 중복된 부분은 없는가?
+  * 코드가 무엇을 하는 건지 이해하기 불편하지 않은가?
+  * 코드가 자신이 있어야 할 자리에 있는가?
+  * 앞으로 변경이 일어난다면 어떤 것이 있을 수 있고, 그 변화에 쉽게 대응할 수 있게 작성되었는가?
+
+* upgradeLevels() 리팩토링
+  * 난잡한 if/else-if/else 구문을 canUpgradeLevel() 메서드로 분리
+  * upgradeLevel() 메서드를 알기 쉽게 변경
+  * 각 오브젝트와 메서드가 각각 자기 몫의 책임을 맡아 일을 하는 구조로 변경
+  * 객체지향적인 코드는 다른 오브젝트의 데이터를 가져와서 작업하지 않고
+  <br>데이터를 갖고 있는 다른 오브젝트에게 작업을 요청함.
+
+```java
+// 리스트 5-23 기본 작업 흐름만 남겨준 upgradeLevels()
+public void upgradeLevels() throws Exception {
+	List<User> users = userDao.getAll();
+	for (User user : users) {
+		if (canUpgradeLevel(user)) {
+			upgradeLevel(user);
+		}
+	}
+}
+
+// 리스트 5-26 업그레이드 순서를 담고 있도록 수정한 Level
+public enum Level {
+	GOLD(3, null), SILVER(2, GOLD), BASIC(1, SILVER);  
+	
+	private final int value;
+	private final Level next; // 다음 단계의 레벨 정보를 스스로 갖고 있도록 수정
+	
+	Level(int value, Level next) {  
+		this.value = value;
+		this.next = next; 
+	}
+	
+	public int intValue() {
+		return value;
+	}
+	
+	public Level nextLevel() { 
+		return this.next;
+	}
+	
+	public static Level valueOf(int value) {
+		switch(value) {
+		case 1: return BASIC;
+		case 2: return SILVER;
+		case 3: return GOLD;
+		default: throw new AssertionError("Unknown value: " + value);
+		}
+	}
+}
+
+// 리스트 5-27 User의 레벨 업그레이드 작업용 메서드
+package springbook.user.domain;
+
+public class User {
+	...
+	public void upgradeLevel() {
+		Level nextLevel = this.level.nextLevel();	
+		if (nextLevel == null) { 								
+			throw new IllegalStateException(this.level + "은 업그레이드가 불가 합니다.");
+		}
+		else {
+			this.level = nextLevel;
+		}	
+	}
+}
+
+// 리스트 5-28 간결해진 UserService의 upgradeLevel() 메서드
+public class UserService {
+	...
+	protected void upgradeLevel(User user) {
+		user.upgradeLevel();
+		userDao.update(user);
+	}
+}
+
+// 리스트 5-30 개선한 upgradeLevels() 테스트
+@Test
+public void upgradeLevels() throws Exception {
+	userDao.deleteAll();
+	for(User user : users) userDao.add(user);
+		
+	userService.upgradeLevels();
+		
+	checkLevelUpgraded(users.get(0), false);
+	checkLevelUpgraded(users.get(1), true);
+	checkLevelUpgraded(users.get(2), false);
+	checkLevelUpgraded(users.get(3), true);
+	checkLevelUpgraded(users.get(4), false);
+}
+
+private void checkLevelUpgraded(User user, boolean upgraded) {
+	User userUpdate = userDao.get(user.getId());
+	if (upgraded) {
+		assertThat(userUpdate.getLevel(), is(user.getLevel().nextLevel()));
+	}
+	else {
+		assertThat(userUpdate.getLevel(), is(user.getLevel()));
+	}
+}
+```
+
+
+### 5.2 트랜잭션 서비스 추상화
+
+
+### 5.2.1 모 아니면 도
+
+* DB Connection을 이용한 작업을 할 때는 관련된 SQL들이 모두 하나의 트랜잭션으로 묶여있어야 함.
+
+* 트랜잭션 테스트용 UserService 확장 클래스를 어떻게 만들까?
+<br>-> 별도의 클래스보다 UserService 클래스를 상속받아 일부 메서드를 오버라이딩.
+<br>-> 단, 상속을 위한 메서드는 private가 아닌 protected 접근자로 변경이 필요.
+```java
+// 리스트 5-36 예외 발생 시 작업 취소 여부 테스트
+@Test
+public void upgradeAllOrNothing() throws Exception {
+	UserService testUserService = new TestUserService(users.get(3).getId());  
+	testUserService.setUserDao(this.userDao); // UserDao를 수동으로 DI
+	testUserService.setDataSource(this.dataSource);
+	 
+	userDao.deleteAll();			  
+	for(User user : users) userDao.add(user);
+	
+	try {
+		// TestUserService 업그레이드 작업 중 예외 발생시킴.
+		testUserService.upgradeLevels();   
+		fail("TestUserServiceException expected"); 
+	}
+	catch(TestUserServiceException e) { 
+	}
+	
+	// 예외가 발생하기 전에 레벨 변경이 있었던 사용자의 레벨이 처음 상태로 변경됐는지 확인
+	// 트랜잭션으로 관리되지 않았기 때문에 테스트 실패
+	checkLevelUpgraded(users.get(1), false);
+}
+```
+
+
+### 5.2.2 트랜잭션 경계설정
+
+* SQL을 처리할 때는 하나의 트랜잭션이 완료된 후에 commit이나 rollback을 진행해야 함.
+
+* **트랜잭션의 경계 설정 (transaction demarcation)**
+<br>`setAutoCommit(false)`로 트랜잭션의 시작을 선언하고 `commit()` 또는 `rollback()`으로 트랜잭션을 종료하는 방법
+
+* **로컬 트랜잭션 (local transaction)**
+<br>하나의 DB 커넥션 안엥서 만들어지는 트랜잭션
+```java
+// 리스트 5-37 트랜잭션을 사용한 JDBC 코드
+Connection c = dataSource.getConnection();
+
+c.setAutoCommit(false); // 트랜잭션 시작
+try {
+	PreparedStatement st1 = c.prepareStatement("update users ...");
+	st1.executeUpdate();
+	
+	PreparedStatement st2 = c.prepareStatement("update users ...");
+	st2.executeUpdate();
+	
+	c.commit(); // 트랜잭션 커밋
+} catch (Exception) {
+	c.rollback() // 트랜잭션 롤백
+}
+```
+
+* 만약 DAO에 트랜잭션 경계 설정 로직이 들어간다면 템플릿 메서드 호출 시마다 DB 커넥션이 생성됨.
+  * 여러 작업을 하나의 트랜잭션으로 묶을 수 없음!
+  * 어떤 일련의 작업이 하나의 트랜잭션으로 묶이려면 DB 커넥션도 하나만 사용해야 함.
+
+* 비즈니스 로직 내의 트랜잭션 경계설정
+  * 여러 작업을 하나로 묶으려면 UserService에서 트랜잭션 경계설정을 담당해야 함.
+
+* Connection 오브젝트를 UserService에서 UserDao로 던져주면 어떨까?
+  * Connection 정보가 드러나고 만약 DB 커넥션이 변경되면 일일이 다 바꿔줘야 함!
+  * DB 커넥션을 비롯한 리소스의 깔끔한 처리를 가능하게 했던 JdbcTemplate 사용 불가
+  * UserService 메서드에 Connection 파라미터가 더 추가됨.
+  * Connection 파라미터가 UserDao 인터페이스 메서드에 추가되면 더 이상 데이터 액세스 기술에 독립적이지 않음.
+  * DAO 메서드에 Connection 파라미터를 받게 하면 테스트 코드에도 영향을 끼침.
+
+* 스프링은 트랜잭션 동기화 (transaction synchronization) 방법을 제안함.
+  * UserService에서 트랜잭션을 시작하기 위해 만든 Connection 오브젝트를 특별한 저장소에 보관
+  * 이후 호출되는 DAO의 메서드에서는 저장된 Connection을 가져다가 사용하도록 함.
+  * 트랜잭션 동기화 저장소는 작업 스레드마다 독립적으로 Connection 오브젝트를 저장하고 관리
+  <br>-> 다중 사용자를 처리하는 서버의 멀티스레드 환경에서도 OK!
+```java
+public void upgradeLevels() throws Exception {
+	// 트랜잭션 동기화 관리자를 이용해 동기화 작업을 초기화
+	TransactionSynchronizationManager.initSynchronization();  
+	// DB 커넥션을 생성하고 트랜잭션을 시작. 이후의 DAO 작업은 모두 이 트랜잭션으로 처리
+	Connection c = DataSourceUtils.getConnection(dataSource); 
+	c.setAutoCommit(false);
+	
+	try {									   
+		List<User> users = userDao.getAll();
+		for (User user : users) {
+			if (canUpgradeLevel(user)) {
+				upgradeLevel(user);
+			}
+		}
+		c.commit(); // 정상적으로 작업을 마치면 트랜잭션 커밋
+	} catch (Exception e) {    
+		c.rollback(); // 예외가 발생하면 롤백
+		throw e;
+	} finally {
+		// 스프링 유틸리티 메서드를 이용해 Connection을 안전하게 close
+		DataSourceUtils.releaseConnection(c, dataSource);	
+		// 동기화 작업 종료 및 정리
+		TransactionSynchronizationManager.unbindResource(this.dataSource);  
+		TransactionSynchronizationManager.clearSynchronization();  
+	}
+}
+```
+
+### 5.2.4 트랜잭션 서비스 추상화
+
