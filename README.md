@@ -451,7 +451,7 @@ public void upgradeAllOrNothing() throws Exception {
 <br>`setAutoCommit(false)`로 트랜잭션의 시작을 선언하고 `commit()` 또는 `rollback()`으로 트랜잭션을 종료하는 방법
 
 * **로컬 트랜잭션 (local transaction)**
-<br>하나의 DB 커넥션 안엥서 만들어지는 트랜잭션
+<br>하나의 DB 커넥션 안에서 만들어지는 트랜잭션
 ```java
 // 리스트 5-37 트랜잭션을 사용한 JDBC 코드
 Connection c = dataSource.getConnection();
