@@ -520,3 +520,236 @@ public void upgradeLevels() throws Exception {
 
 ### 5.2.4 트랜잭션 서비스 추상화
 
+* 기술과 환경에 종속되는 트랜잭션 경계설정 코드
+  * 한 개 이상의 DB로의 작업을 하나의 트랜잭션으로 만드는 건 JDBC의 Connection을 이용한 트랜잭션 방식인 로컬 트랜잭션으로는 불가능
+  * 별도의 트랜잭션 관리자를 통해 트랜잭션을 관리하는 글로벌 트랜잭션(global transaction) 방식을 사용해야 함.
+  * JTA(Java Transaction API)를 이용하면 글로벌 트랜잭션 적용이 가능하나 UserService의 코드를 수정해야 함.
+
+* 트랜잭션 API의 의존관계 문제와 해결책
+  * 트랜잭션 경계설정을 담당하는 코드는 일정한 패턴을 갖는 유사한 구조
+  * 여러 기술의 사용법에 공통점이 있다면 추상화 가능
+  * 추상화란?
+  <br>하위 시스템의 공통점을 뽑아내서 분리시키는 것
+  * DB에서 제공하는 DB 클라이언트 라이브러리와 API는 원래 전혀 호환이 되지 않음.
+  * JDBC라는 추상화 기술이 있기 때문에 DB 종류와 관계없이 데이터 액세스 코드 작성 가능
+
+* 스프링의 트랜잭션 서비스 추상화
+  * 스프링은 트랜잭션 기술의 공통점을 담은 트랜잭션 추상화 기술을 제공
+  * `PlatformTransactionManager`: 트랜잭션 경계설정을 위한 추상 인터페이스
+  * `DataSourceTransactionManager`: JDBC의 로컬 트랜잭션을 이용할 경우 구현하는 클래스
+  * `getTransaction()`: 트랜잭션 오브젝트 생성. 필요에 따라 DB 커넥션도 가져옴.
+```java
+// 리스트 4-45 스프링의 트랜잭션 추상화 API를 적용한 upgradeLevels()
+public void upgradeLevels() {
+	// JDBC 트랜잭션 추상 오브젝트 생성
+	PlatformTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
+	
+	// 트랜잭션 시작
+	TransactionStatus status = transactionManager.getTransaction(new DefaultTransactionDefinition());
+	try {
+		List<User> users = userDao.getAll();
+		for (User user : users) {
+			if (canUpgradeLevel(user)) {
+				upgradeLevel(user);
+			}
+		}
+		transactionManager.commit(status); // 트랜잭션 커밋
+	} catch (RuntimeException e) {
+		transactionManager.rollback(status); // 트랜잭션 롤백
+		throw e;
+	}
+}
+```
+
+* 트랜잭션 기술 설정의 분리
+  * 다른 트랜잭션 처리 방식으로 변경하려면 UserService의 소스 변경이 불가피.
+  * `HibernateTransactionManager`: 하이버네이트 트랜잭션
+  * `JPATransactionManager`: JPA 트랜잭션
+  * `JTATransactionManager`: JTA 트랜잭션
+  * 컨테이너를 통해 외부에서 제공받게 하는 스프링 DI 방식으로 변경해야 함.
+
+* **스프링의 빈으로 등록 시 주의사항**
+  * 싱글톤으로 만들어져 여러 스레드에서 동시에 사용해도 괜찮은지 검토
+  * 멀티스레드 환경에서 안전하지 않은 클래스를 빈으로 등록하면 심각한 문제 발생
+
+```java
+// 리스트 5-46 트랜잭션 매니저를 빈으로 분리시킨 UserService
+public class UserService {
+	...
+	private PlatformTransactionManager transactionManager;
+
+	public void setTransactionManager(PlatformTransactionManager transactionManager) {
+		this.transactionManager = transactionManager;
+	}
+
+	public void upgradeLevels() {
+		// DI 받은 트랜잭션 매니저를 공유해서 사용. 멀티스레드 환경에서도 안전.
+		TransactionStatus status = 
+			this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+		try {
+			List<User> users = userDao.getAll();
+			for (User user : users) {
+				if (canUpgradeLevel(user)) {
+					upgradeLevel(user);
+				}
+			}
+			this.transactionManager.commit(status);
+		} catch (RuntimeException e) {
+			this.transactionManager.rollback(status);
+			throw e;
+		}
+	}
+	...
+}
+
+// 리스트 5-47 트랜잭션 매니저 빈을 등록한 설정파일
+<bean id="userService" class="springbook.user.service.UserService">
+	<property name="userDao" ref="userDao" />
+	<property name="transactionManager" ref="transactionManager" />
+</bean>
+	
+<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+	<property name="dataSource" ref="dataSource" />  
+</bean>
+
+// 리스트 5-48 트랜잭션 매니저를 수동 DI하도록 수정한 테스트
+public class UserServiceTest {
+	...
+	@Autowired PlatformTransactionManager transactionManager;
+	
+	@Test
+	public void upgradeAllOrNothing() {
+		UserService testUserService = new TestUserService(users.get(3).getId());  
+		testUserService.setUserDao(this.userDao);
+		testUserService.setTransactionManager(this.transactionManager);
+		...
+	}
+	...
+}
+```
+
+
+### 5.3 서비스 추상화와 단일 책임 원칙
+
+* 수직, 수평 계층구조와 의존관계
+  * 기술과 서비스에 대한 추사오하 기법을 이용 시 특정 기술환경에 종속되지 않는 코드 생성 가능
+  <br>-> 같은 계층에서 수평적인 분리
+  * 트랜잭션의 추상화
+  <br>애플리케이션의 비즈니스 로직과 그 하위에서 동작하는 로우레벨의 트랜잭션 기술이라는
+  <br>아예 다른 계층의 특성을 갖는 코드를 분리한 것.
+  * `PlatformTransactionManager` 인터페이스를 통한 추상화 계층을 사이에 두고 사용하기 때문에 구체적인 트랜잭션 기술에 독립적.
+  * **DI의 가치는 관심, 책심, 성격이 다른 코드를 깔끔하게 분리하는 것.**
+
+* 단일 책임 원칙 (Single Responsibility Principle)
+  * 하나의 모듈은 한 가지 책임을 가져야 한다는 의미
+  * UserService에서 JDBC Connection의 메서드를 직접 사용하는 트랜잭션 코드가 있을 경우
+  <br>-> 비즈니스 로직과 트랜잭션 관리 2가지의 책임을 갖고 있음.
+  <br>-> 트랜잭션 서비스 추상화 방식을 도입하고나면 비즈니스 로직 관리만 하는 단일 책임.
+
+* 단일 책임 원칙의 장점
+  * 어떤 변경이 필요할 때 수정 대상이 명확해짐.
+  * 책임/관심이 다른 코드를 분리하고, 서로 영향을 주지 않게 추상화 기법을 도입하고,
+  <br>애플리케이션 로직과 기술/환경을 분리하는 등의 작업은 엔터프라이즈 애플리케이션에 필수
+  <br>-> 이를 위한 핵심적인 도구가 스프링이 제공하는 DI
+  * 단일 책임 원칙을 잘 지키는 코드를 만드려면 **인터페이스를 도입하고 이를 DI로 연결**
+
+
+### 5.4 메일 서비스 추상화
+
+
+### 5.4.1 JavaMail을 이용한 메일 발송 기능
+
+* JavaMail 메일 발송
+  * `javax.mail` 패키지에서 제공하는 `JavaMail` 클래스를 이용해서 메일 전송 가능
+```java
+// 리스트 5-49 레벨 업그레이드 작업 메서드 수정
+protected void upgradeLevel(User user) {
+	user.upgradeLevel();
+	userDao.update(user);
+	sendUpgradeEMail(user);
+}
+```
+
+
+### 5.4.2 JavaMail이 포함된 코드의 테스트
+
+* 서버가 잘 준비되어 있다면 메일 전송은 문제없으나, 테스트 시마다 메일을 전송해야 하는가?
+<br>테스트 시에는 테스트용으로 준비된 메일 서버를 이용하는 방법을 고려
+
+* 굳이 메일 전송을 할 이유가 없다면 `JavaMail`을 사용하지 말고 별도로 구성한 테스트용 클래스를 사용
+
+
+### 5.4.3 테스트를 위한 서비스 추상화
+
+```java
+// 리스트 5-53 메일 전송 기능을 가진 오브젝트를 DI 받도록 수정한 UserService
+public class UserService {
+	...
+	private MailSender mailSender;
+
+	public void setMailSender(MailSender mailSender) {
+		this.mailSender = mailSender;
+	}
+	
+	private void sendUpgradeEMail(User user) {
+		SimpleMailMessage mailMessage = new SimpleMailMessage();
+		mailMessage.setTo(user.getEmail());
+		mailMessage.setFrom("useradmin@ksug.org");
+		mailMessage.setSubject("Upgrade 안내");
+		mailMessage.setText("사용자님의 등급이 " + user.getLevel().name());
+		
+		this.mailSender.send(mailMessage);
+	}
+	...
+}
+
+// 리스트 5-54 메일 발송 오브젝트의 빈 등록
+<bean id="userService" class="springbook.user.service.UserService">
+	<property name="userDao" ref="userDao" />
+	<property name="transactionManager" ref="transactionManager" />
+	<property name="mailSender" ref="mailSender" />
+</bean>
+
+<bean id="mailSender" class="org.springframework.mail.javamail.JavaMailSenderImpl">
+	<property name="host" value="mail.server.com" />
+</bean>
+```
+
+* 테스트용 메일 발송 오브젝트
+  * 불필요한 테스트 메일이 발송되지 않도록 Dummy 클래스를 이용해서 구성
+```java
+// 리스트 5-55 아무런 기능이 없는 MailSender 구현 클래스
+public class DummyMailSender implements MailSender {
+	public void send(SimpleMailMessage mailMessage) throws MailException {
+	}
+
+	public void send(SimpleMailMessage[] mailMessage) throws MailException {
+	}
+}
+
+// 리스트 5-56 테스트용 UserService를 위한 메일 전송 오브젝트의 수동 DI
+public class UserServiceTest {
+	...
+	@Autowired MailSender mailSender;
+	
+	@Test
+	public void upgradeAllOrNothing() {
+		...
+		testUserService.setMailSender(this.mailSender);
+		...
+	}
+}
+```
+
+* 테스트와 서비스 추상화
+  * 서비스 추상화란?
+  <br>트랜잭션과 같이 기능은 유사하나 사용 방법이 다른 로우레벨의 다양한 기술에 대해
+  <br>추상 인터페이스와 일관성 있는 접근 장법을 제공해주는 것.
+  * 메일 발송 작업에 트랜잭션 개념을 적용하는 법
+    * 방법1: 업그레이드 대상 사용자를 발견할 때마다 메일을 전송하지 않고 별도의 목록에 발송대상 저장
+    * 방법2: MailSender를 확장해서 메일 전송에 트랜잭션 개념을 적용
+
+
+### 5.4.4 테스트 대역
+
+
