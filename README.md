@@ -34,4 +34,13 @@ https://github.com/RedRabbit-88/SpringFramework/wiki/5%EC%9E%A5-%EC%84%9C%EB%B9%
 
 ### 6.1.1 메서드 분리
 
-* 
+```java
+	public void upgradeLevels() {
+		List<User> users = userDao.getAll();
+		for (User user : users) {
+			if (canUpgradeLevel(user)) {
+				upgradeLevel(user);
+			}
+		}
+	}
+```
