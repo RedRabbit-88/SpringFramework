@@ -752,4 +752,120 @@ public class UserServiceTest {
 
 ### 5.4.4 테스트 대역
 
+* 의존 오브젝트 변경을 통한 테스트 방법
+  * UserDao 테스트 구조
+    * 운영: UserDaoTest -> UserDao -> ComplexDataSOurce -> WAS DB Pool -> 운영 DB
+    * 테스트: UserDaoTest -> UserDao -> SimpleDataSource -> Test DB
+  * UserService 테스트 구조
+    * 운영: UserServiceTest -> UserService -> JavaMailSenderImpl -> JavaMail -> Mail Server
+    * 테스트: UserServiceTest -> UserService -> DummyMailSender
+    <br>-> JavaMail 테스트를 위해서 생성해야 하는 복잡한 클래스들을 생성할 필요가 없음.
 
+* 테스트 대역의 종류와 특징
+  * 테스트용으로 사용되는 특별한 오브젝트들이 존재
+  <br>ex) UserDao의 DataSource, UserService의 MailSender 인터페이스를 구현한 오브젝트
+  * **테스트 대역 (test double)**
+  <br>테스트 환경을 만들어주기 위해, 테스트 대상이 되는 오브젝트의 기능에마 충실하게 수행하면서
+  <br>빠르게, 자주 테스트를 실행할 수 있도록 사용하는 오브젝트
+  * **테스트 스텁 (test stub)**: 대표적인 테스트 대역 ex) DummyMailSender
+    * 테스트 대상 오브젝트의 의존객체로서 존재하면서 테스트 동안에 코드가 정상적으로 수행할 수 있도록 돕는 것
+    * 일반적으로 메서드를 통해 전달되는 팔아미터와 달리, 테스트 코드 내부에서 간접적으로 사용됨.
+    * 따라서 DI 등을 통해 미리 의존 오브젝트를 테스트 스텁으로 변경해야 함.
+  * 테스트가 원활하게 돌아가도록 의존 오브젝트로서 간접적인 도움을 준다는 개념과 달리,
+  <br>어떤 테스트 대역은 테스트 과정에 매우 적극적으로 참여할 수 있음.
+  * 테스트는 보통 어떤 시스템에 입력을 주었을 때 기대하는 출력이 나오는지를 검증
+  <br>**스텁을 이용하면 간접적인 입력/출력 값을 지정해 줄 수 있다.**
+
+* 테스트 오브젝트가 간접적으로 의존 오브젝트에 넘기는 값과 그 행위에 대해서도 검증하려면 어떻게 해야 할까?
+<br>->테스트 대상의 간접적인 출력 결과와 과정을 검증할 수 있도록 설계된 **목 오브젝트 (mock object)**를 사용해야 함.
+
+* 목 오브젝트를 이용한 테스트
+
+```java
+// 리스트 5-57 목 오브젝트로 만든 메일 전송 확인용 클래스
+static class MockMailSender implements MailSender {
+	// UserService로부터 전송 요청을 받은 메일 주소를 저장
+	private List<String request = new ArrayList<String>();
+	
+	// 저장해둔 메일 주소를 읽을 수 있도록 함.
+	public List<String> getRequests() {
+		return requests;
+	}
+	
+	public void send(SimpleMailMessage mailMessage) throws MailException {
+		// 전송 요청을 받은 이메일 주소를 저장해둔다.
+		// 간단하게 첫 번째 수신자 메일 주소만 저장.
+		requests.add(mailMessage.getTo()[0]);
+	}
+
+	public void send(SimpleMailMessage[] mailMessage) throws MailException {
+	}
+}
+
+// 리스트 5-58 메일 발송 대상을 확인하는 테스트
+@Test
+@DirtiesContext // 컨텍스트의 DI 설정을 변경하는 테스트를 알려줌.
+public void upgradeLevels() {
+	userDao.deleteAll();
+	for(User user : users) userDao.add(user);
+	
+	// 메일 발송 결과를 테스트할 수 있도록 목 오브젝트를 만들어 UserService의 의존 오브젝트로 주입
+	MockMailSender mockMailSender = new MockMailSender();  
+	userService.setMailSender(mockMailSender);  
+	
+	// 메일 발송이 일어나면 MockMailSender 오브젝트의 리스트에 그 결과가 저장됨.
+	userService.upgradeLevels();
+	
+	checkLevelUpgraded(users.get(0), false);
+	checkLevelUpgraded(users.get(1), true);
+	checkLevelUpgraded(users.get(2), false);
+	checkLevelUpgraded(users.get(3), true);
+	checkLevelUpgraded(users.get(4), false);
+	
+	// 목 오브젝트에 저장된 메일 수신자 목록을 가져와 업그레이드 대상과 일치하는지 
+	List<String> request = mockMailSender.getRequests();  
+	assertThat(request.size(), is(2));  
+	assertThat(request.get(0), is(users.get(1).getEmail()));  
+	assertThat(request.get(1), is(users.get(3).getEmail()));  
+}
+```
+
+
+### 5.5 정리
+
+* 비즈니스 로직을 담은 코드는 데이터 액세스 로직을 담은 코드와 깔끔하게 분리되는 것이 바람직함.
+<br>비즈니스 로직 코드 또한 내부적으로 책임과 역할에 따라서 깔끔하게 메서드로 정리돼야 함.
+<br>-> UserService로 분리함!
+
+* 이를 위해서는 DAO의 기술 변화에 서비스 계층의 코드가 영향을 받지 않도록
+<br>**인터페이스**와 **DI**를 잘 활용해서 결합도를 낮춰야 함.
+
+* DAO를 사용하는 비즈니스 로직에는 단위 작업을 보장해주는 트랜잭션이 필요.
+
+* 트랜잭션의 시작과 종료를 지정하는 일을 **트랜잭션 경계설정 (transaction demarcation)**이라고 한다.
+<br>트랜잭션 경계설정은 주로 비즈니스 로직 안에서 일어나는 경우가 많음.
+
+* 시작된 트랜잭션 정보를 담은 오브젝트를 파라미터로 DAO에 전달하는 방법은 매우 비효율적!
+<br>-> 스프링이 제공하는 트랜잭션 동기화 기법을 활용하는 것이 편리
+
+* 자바에서 사용되는 트랜잭션 API의 종류와 방법은 다양함.
+<br>환경과 서버에 따라서 트랜잭션 방법이 변경되면 경계설정 코드도 같이 변경돼야 함.
+
+* 트랜잭션 방법에 따라 브지니스 로직을 담은 코드가 함께 변경되면 단일 책임 원칙에 위배됨.
+<br>DAO가 사용하는 특정 기술에 대해 강한 결합을 만들어냄.
+
+* 트랜잭션 경계설정 코드가 비즈니스 로직 코드에 영향을 주지 않게 하려면?
+<br>스프링이 제공하는 트랜잭션 서비스 추상화를 이용하면 됨!
+<br>-> `PlatformTransactionManager`를 사용!
+
+* 서비스 추상화는 로우레벨의 트랜잭션 기술과 API의 변화에 상관없이 일관된 API를 가진 추상화 계층을 도입함.
+
+* 서비스 추상화는 테스트하기 어려운 JavaMail 같은 기술에도 적용 가능.
+
+* 테스트 대역 (test double)
+<br>테스트 대상이 사용하는 의존 오브젝트를 대체할 수 있도록 만든 오브젝트
+
+* 테스트 대역은 테스트 대상 오브젝트가 원활하게 동작할 수 있도록 도우면서 테스트를 위해 간접적인 정보를 제공.
+
+* 목 오브젝트 (mock object)
+<br>테스트 대역 중에서 테스트 대상으로부터 전달받은 정보를 검증할 수 있도록 설계된 오브젝트.
