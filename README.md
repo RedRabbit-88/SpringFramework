@@ -439,7 +439,390 @@ public void mockUpgradeLevels() throws Exception {
   * 자바의 모든 클래스는 그 클래스 자체의 구성정보를 담은 Class 타입의 오브젝트를 갖고 있음.
   * `클래스이름.class`라고 하거나 오브젝트의 `getClass()` 메서드를 호출하면
   <br>클래스 정보를 담은 Class 타입의 오브젝트를 가져올 수 있음.
-  `Method lengthMethod = String.class.getMethod("length"); // String의 length() 메서드
+  <br>`Method lengthMethod = String.class.getMethod("length"); // String의 length() 메서드
   * `invoke()` 메서드
-  <br>메서드를 실행시킬 대상 오브젝트와 파라미터 목록을 받아서 메서드를 호출한 뒤에 그 결과를 Object 타입으로 리턴
-  `int length = lengthMethod.invoke(name); // int length = name.length();`
+  <br>메서드를 실행시킬 대상 오브젝트와 파라미터 목록을 받아서 메서드를 호출한 뒤에
+  <br>그 결과를 Object 타입으로 리턴
+  <br>`int length = lengthMethod.invoke(name); // int length = name.length();`
+
+* 다이내믹 프록시 적용
+  * **다이내믹 프록시**
+  <br>프록시 팩토리에 의해 런타임 시 다이내믹하게 만들어지는 오브젝트
+  * 타깃의 인터페이스와 같은 타입으로 만들어짐.
+  * 클라이언트는 다이내믹 프록시 오브젝트를 타깃 인터페이스를 통해 사용 가능
+  * 프록시 팩토리에게 인터페이스 정보만 제공하면 해당 인터페이스를 구현한 클래스의 오브젝트를 자동생성.
+  * 프록시로서 필요한 부가기능 제공 코드는 직접 작성해야 함.
+  <br>-> 부가기능은 `InvocationHandler`를 구현한 오브젝트에 담는다.
+  * `public Object invoke(Object proxy, Method method, Object[] args)`
+    * `Method method`: 리플렉션의 Method 인터페이스
+    * `Object[] args`: 메서드를 호출할 때 전달되는 파라미터
+  * 다이내믹 프록시 오브젝트는 클라이언트의 모든 요청을 리플렉션 정보로 변환해서
+  <br>InvocationHandler 구현 오브젝트의 invoke() 메서드로 넘김.
+  <br>-> 타깃 인터페이스의 모든 메서드 요청이 하나의 메서드로 집중되기 떄문에 중복되는 기능을 효과적으로 제공 가능
+```java
+// 리스트 6-23 InvocationHandler 구현 클래스
+public class UppercaseHandler implements InvocationHandler {
+	Hello target;
+	
+	// 다이내믹 프록시로부터 전달받은 요청을
+	// 다시 타깃 오브젝트에 주입해야 하기 때문에 타깃 오브젝트를 주입받아 둔다.
+	public UppercaseHandler(Hello target) {
+		this.target = target;
+	}
+	
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		String ret = (String)method.invoke(target, args); // 타깃으로 위임. 인터페이스의 메서드 호출에 모두 적용됨.
+		return ret.toUppserCase(); // 부가기능 제공
+	}
+}
+
+// 리스트 6-24 프록시 생성
+// 파라미터로 제공한 Hello.class 인터페이스를 구현한 클래스의 오브젝트이기 때문에 Hello 타입으로 캐스팅 가능
+Hello proxiedHello = (Hello)Proxy.newProxyInstance(
+	getClass().getClassLoader(), // 동적으로 생성되는 다이내믹 프록시 클래스의 로딩에 사용될 클래스 로더
+	new Class[] { Hello.class }, // 구현할 인터페이스. 한 번에 하나 이상의 인터페이스 구현 가능
+	new UppercaseHandler(new HelloTarget()); // 부가기능과 위임 코드를 담은 InvocationHandler
+```
+
+* `InvocationHandler`는 타깃의 종류에 상관없이도 적용이 가능함.
+
+```java
+// 리스트 6-25 확장된 UppercaseHandler
+public class UppercaseHandler implements InvocationHandler {
+	Object target;
+	
+	// 어떤 종류의 인터페이스를 구현한 타깃에도 적용 가능하도록 Object 타입으로 수정
+	public UppercaseHandler(Object target) {
+		this.target = target;
+	}
+	
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		Object ret = method.invoke(target, args);
+		if (ret instanceof String) { // 호출된 메서드의 리턴타입이 String일 경우에만 부가기능 제공
+			return ((String)ret).toUppserCase();
+		} else {
+			return ret;
+		}
+	}
+}
+```
+
+
+### 6.3.3 다이내믹 프록시를 이용한 트랜잭션 부가기능
+
+* 트랜잭션 InvocationHandler
+  * 롤백 적용 예외는 `InvocationTargetException`을 적용해야 함.
+  * 리플렉션 메서드 `Method.invoke()` 사용 시에는 타깃 오브젝트에서 발생한 예외가 포장됨.
+  
+```java
+// 리스트 6-27 다이내믹 프록시를 위한 트랜잭션 부가기능
+public class TransactionHandler implements InvocationHandler {
+	Object target; // 부가기능을 제공할 타깃 오브젝트. 어떤 타입의 오브젝트에도 적용 가능.
+	PlatformTransactionManager transactionManager; // 트랜잭션 기능을 제공하는 트랜잭션 매니저
+	String pattern; // 트랜잭션을 적용할 메서드 이름 패턴
+
+	public void setTarget(Object target) {
+		this.target = target;
+	}
+
+	public void setTransactionManager(PlatformTransactionManager transactionManager) {
+		this.transactionManager = transactionManager;
+	}
+
+	public void setPattern(String pattern) {
+		this.pattern = pattern;
+	}
+
+	// 트랜잭션 적용 대상 메서드를 선별해서 트랜잭션 경계설정 기능을 부여
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		if (method.getName().startsWith(pattern)) {
+			return invokeInTransaction(method, args);
+		} else {
+			return method.invoke(target, args);
+		}
+	}
+
+	private Object invokeInTransaction(Method method, Object[] args) throws Throwable {
+		TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+		try {
+			Object ret = method.invoke(target, args); // 트랜잭션을 시작하고 타깃 오브젝트의 메서드를 호출
+			this.transactionManager.commit(status); // 예외가 발생하지 않았으면 트랜잭션 커밋
+			return ret;
+		} catch (InvocationTargetException e) { // 예외가 발생하면 트랜잭션 롤백
+			this.transactionManager.rollback(status);
+			throw e.getTargetException();
+		}
+	}
+}
+
+// 리스트 6-28 다이내믹 프록시를 이용하는 테스트
+@Test
+public void upgradeAllOrNothing() throws Exception {
+	...
+	TransactionHandler txHandler = new TransactionHandler();
+	// 트랜잭션 핸들러가 필요한 정보와 오브젝트를 DI
+	txHandler.setTarget(testUserService);
+	txHandler.setTransactionManager(transactionManager);
+	txHandler.setPattern("upgradeLevels");
+	
+	// UserService 인터페이스 타입의 다이내믹 프록시 생성
+	UserService txUserService = (UserService)Proxy.newProxyInstance(
+		getClass().getClassLoader(), new Class[] { UserService.class }, txHandler);
+	...
+}
+```
+
+
+### 6.3.4 다이내믹 프록시를 위한 팩토리 빈
+
+* DI의 대상이 되는 다이내믹 프록시 오브젝트는 스프링의 빈으로 등록할 방법이 없음!
+  * 스프링의 빈의 기본적으로 클래스 이름과 프로퍼티로 정의됨.
+  * Class의 newInstance() 메서드는 해당 클래스의 파라미터가 없는 생성자를 호출하고
+  <br>그 결과 생성되는 오브젝트를 돌려주는 리플렉션 API.
+  <br>`Date now = (Date)Class.forName("java.util.Date").newInstance();`
+  * 스프링은 내부적으로 리플렉션 API를 이용해서 빈 정의에 나오는 **클래스 이름을 가지고 빈 오브젝트를 생성**
+  <br>-> 다이내믹 프록시 오브젝트는 이런 식으로 프록시 오브젝트가 생성되지 않는다!
+  <br>-> 다이내믹 프록시는 Proxy 클래스의 newProxyInstance()라는 스태틱 팩토리 메서드를 통해서만 생성 가능!
+
+* 팩토리 빈
+  * 스프링을 대신해서 오브젝트의 생성로직을 담당하도록 만들어진 특별한 빈
+  <br>-> 스프링의 `FactoryBean` 인터페이스를 구현하는 방법으로 생성 가능
+  
+```java
+// 리스트 6-29 FactoryBean 인터페이스
+package org.springframework.beans.factory;
+
+public interface FactoryBean<T> {
+	T getObject() throws Exception; // 빈 오브젝트를 생성해서 돌려줌.
+	Class<? extends T> getObjectType(); // 생성되는 오브젝트의 타입을 알려줌.
+	boolean isSingleton(); // getObject()가 돌려주는 오브젝트가 항상 같은 싱글톤 오브젝트인지 알려줌.
+}
+
+// 리스트 6-30 생성자를 제공하지 않는 클래스
+public class Message {
+	String text;
+	
+	// 생성자 private로 선언되어 있어서 외부에서 접근 불가
+	private Message(String text) {
+		this.text = text;
+	}
+	
+	public String getText() {
+		return text;
+	}
+	
+	// 생성자 대신 사용할 수 있는 스태틱 팩토리 메서드를 제공
+	public static Message newMessage(String text) {
+		return new Message(text);
+	}
+}
+
+// 리스트 6-31 Message의 팩토리 빈 클래스
+public class MessageFactoryBean implements FactoryBean<Message> {
+	String text;
+	
+	// 오브젝트를 생성할 때 필요한 정보를 팩토리 빈의 프로퍼티로 설정해서 대신 DI 받을 수 있게 함.
+	// 주입된 정보는 오브젝트 생성 중 사용됨.
+	public void setText(String text) {
+		this.text = text;
+	}
+
+	// 실제 빈으로 사용할 오브젝트를 직접 생성
+	// 코드를 이용하기 때문에 복잡한 방식의 오브젝트 생성과 초기화 작업도 가능.
+	public Message getObject() throws Exception {
+		return Message.newMessage(this.text);
+	}
+
+	public Class<? extends Message> getObjectType() {
+		return Message.class;
+	}
+
+	// getObject() 메서드가 돌려주는 오브젝트가 싱글톤인지를 알려줌.
+	// 이 팩토리 빈은 매번 요청할 때마다 새로운 오브젝트를 만드므로 false로 설정
+	public boolean isSingleton() {
+		return true;
+	}
+}
+```
+
+* 팩토리 빈의 설정 방법
+  * 여타 빈 설정과 다른 점
+    * message 빈 오브젝트의 타입이 class 애트리뷰트에 정의된 MessageFactoryBean이 아니라 Message 타입임.
+    * Message 빈의 타입은 getObjectType() 메서드가 돌려주는 타입으로 결정됨.
+
+```java
+// 리스트 6-32 팩토리 빈 설정
+<bean id="message" class="springbook.learningtest.spring.factorybean.MessageFactoryBean">
+	<property name="text" value="Factory Bean" />
+</bean>
+
+// 리스트 6-33 팩토리 빈 테스트
+RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration // 설정파일 이름을 지정하지 않으면 클래스이름 + "-context.xml"이 디폴트로 사용됨.
+public class FactoryBeanTest {
+	@Autowired
+	ApplicationContext context;
+	
+	@Test
+	public void getMessageFromFactoryBean() {
+		Object message = context.getBean("message");
+		assertThat(message, is(Message.class)); // 타입 확인
+		assertThat(((Message)message).getText(), is("Factory Bean"));
+	}
+	
+	@Test
+	public void getFactoryBean() throws Exception {
+		Object factory = context.getBean("&message"); // "&"를 앞에 붙여주면 팩토리 빈 자체를 돌려줌.
+		assertThat(factory, is(MessageFactoryBean.class));
+	}
+}
+```
+
+* 다이내믹 프록시를 만들어주는 팩토리 빈
+  * Proxy의 newProxyInstance() 메서드를 통해서만 생성이 가능한 다이내믹 프록시 오브젝트는
+  <br>일반적인 방법으로는 스프링의 빈으로 등록이 불가
+  * 대신 팩토리 빈을 사용하면 다이내믹 프록시 오브젝트를 스프링의 빈으로 만들어줄 수 있음.
+
+```java
+public class TxProxyFactoryBean implements FactoryBean<Object> {
+	// TransactionHandler를 생성할 때 필요
+	Object target;
+	PlatformTransactionManager transactionManager;
+	String pattern;
+	// 다이내믹 프록시를 생성할 때 필요.
+	// UserService 외의 인터페이스를 가진 타깃에도 적용 가능
+	Class<?> serviceInterface;
+	
+	public void setTarget(Object target) {
+		this.target = target;
+	}
+
+	public void setTransactionManager(PlatformTransactionManager transactionManager) {
+		this.transactionManager = transactionManager;
+	}
+
+	public void setPattern(String pattern) {
+		this.pattern = pattern;
+	}
+
+	public void setServiceInterface(Class<?> serviceInterface) {
+		this.serviceInterface = serviceInterface;
+	}
+
+	// FactoryBean 인터페이스 구현 메서드
+	// DI 받은 정보를 이용해서 TransactionHandler를 사용하는 다이내믹 프록시를 구현
+	public Object getObject() throws Exception {
+		TransactionHandler txHandler = new TransactionHandler();
+		txHandler.setTarget(target);
+		txHandler.setTransactionManager(transactionManager);
+		txHandler.setPattern(pattern);
+		return Proxy.newProxyInstance(
+			getClass().getClassLoader(),new Class[] { serviceInterface }, txHandler);
+	}
+
+	// 팩토리 빈이 생성하는 오브젝트의 타입은 DI 받은 인터페이스 타입에 따라 달라짐
+	// 따라서 다양한 타입의 프록시 오브젝트 생성에 재사용 가능
+	public Class<?> getObjectType() {
+		return serviceInterface;
+	}
+
+	// 싱글톤 빈이 아니라는 뜻이 아니라 getObject()가 매번 같은 오브젝트를 리턴하지 않는다는 뜻.
+	public boolean isSingleton() {
+		return false;
+	}
+}
+
+// 리스트 6-36 UserService에 대한 트랜잭션 프록시 팩토리 빈
+<bean id="userService" class="springbook.user.service.TxProxyFactoryBean">
+	<property name="target" ref="userServiceImpl" />
+	<property name="transactionManager" ref="transactionManager" />
+	<property name="pattern" value="upgradeLevels" />
+	<property name="serviceInterface" value="springbook.user.service.UserService" />
+</bean>
+```
+
+* 트랜잭션 프록시 팩토리 빈 테스트
+  * UserServiceTest의 add() 메서드는 @Autowired로 가져온 userService의 빈을 사용하기 때문에
+  <br>TxProxyFactoryBean 팩토리 빈이 생성하는 다이내믹 프록시를 통해 UserService 기능을 사용
+  * upgradeAllOrNothing() 메서드의 경우 예외 발생 시 트랜잭션이 롤백됨을 확인하려면
+  <br>비즈니스 로직 코드를 수정한 `TestUserService` 오브젝트를 타깃 오브젝트 대신 사용해야 함.
+  <br>-> **빈으로 등록된 TxProxyFactoryBean을 직접 가져와서 프록시를 생성**
+
+```java
+// 리스트 6-37 트랜잭션 프록시 팩토리 빈을 적용한 테스트
+package springbook.user.service;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static springbook.user.service.UserServiceImpl.MIN_LOGCOUNT_FOR_SILVER;
+import static springbook.user.service.UserServiceImpl.MIN_RECCOMEND_FOR_GOLD;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.mail.MailException;
+import org.springframework.mail.MailSender;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import springbook.user.dao.UserDao;
+import springbook.user.domain.Level;
+import springbook.user.domain.User;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations="/test-applicationContext.xml")
+public class UserServiceTest {
+	...
+	@Autowired ApplicationContext context; // 팩토리 빈을 가져오려면 필요
+	...
+ 
+	@Test
+	@DirtiesContext // 수동 DI를 사용하기 때문에 사용
+	public void upgradeAllOrNothing() throws Exception {
+		TestUserService testUserService = new TestUserService(users.get(3).getId());
+		testUserService.setUserDao(userDao);
+		testUserService.setMailSender(mailSender);
+		
+		// 팩토리 빈 자체를 가져와야 하므로 빈 이름에 "&"를 반드시 넣어줘야 함.
+		TxProxyFactoryBean txProxyFactoryBean = 
+			context.getBean("&userService", TxProxyFactoryBean.class);
+		txProxyFactoryBean.setTarget(testUserService); // 테스트용 타깃 주입
+		// 변경된 타깃 설정을 이용해서 트랜잭션 다이내믹 프록시 오브젝트를 다시 생성.
+		UserService txUserService = (UserService) txProxyFactoryBean.getObject();
+				 
+		userDao.deleteAll();			  
+		for(User user : users) userDao.add(user);
+		
+		try {
+			txUserService.upgradeLevels();   
+			fail("TestUserServiceException expected"); 
+		}
+		catch(TestUserServiceException e) { 
+		}
+		
+		checkLevelUpgraded(users.get(1), false);
+	}
+	...
+}
+```
+
+
+### 6.3.5 프록시 팩토리 빈 방식의 장점과 한계
+
+* 한 번 부가기능을 가진 프록시를 생성하는 프록시 빈을 만들어두면 타깃의 타입에 상관없이 재사용 가능.
