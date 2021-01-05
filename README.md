@@ -405,7 +405,7 @@ public void mockUpgradeLevels() throws Exception {
   * 같은 인터페이스를 구현한 타겟과 여러 개의 프록시를 사용 가능
   <br>ex) 클라이언트 -> 라인넘버 데코레이터 -> 컬러 데코레이터 -> 페이징 데코레이터 -> 소스코드 출력 기능(타깃)
   * 자바 IO 패키지의 `InputStream`과 `OutputStream` 구현 클래스가 대표적인 데코레이터 패턴
-  `InputStream is = new BufferedInputStream(new FileInputStream("a.txt"));
+  <br>`InputStream is = new BufferedInputStream(new FileInputStream("a.txt"));
   * 데코레이터 패턴은 인터페이스를 통해 위임하는 방식이기 때문에
   <br>어느 데코레이터에서 타깃으로 연결될지 코드 레벨에서는 미리 알 수 없음.
 
