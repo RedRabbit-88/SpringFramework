@@ -859,3 +859,59 @@ public class UserServiceTest {
 // 리스트 6-41 스프링 ProxyFactoryBean을 이용한 다이내믹 프록시 테스트
 
 ```
+public class DynamicProxyTest {
+	@Test
+	public void simpleProxy() {
+		// JDK 다이내믹 프록시 생성
+		Hello proxiedHello = (Hello)Proxy.newProxyInstance(
+				getClass().getClassLoader(), 
+				new Class[] { Hello.class},
+				new UppercaseHandler(new HelloTarget()));
+		...
+	}
+	
+	@Test
+	public void proxyFactoryBean() {
+		ProxyFactoryBean pfBean = new ProxyFactoryBean();
+		pfBean.setTarget(new HelloTarget()); // 타깃 설정
+		pfBean.addAdvice(new UppercaseAdvice()); // 부가 기능을 담은 어드바이스를 추가. 여러 개 추가 가능
+
+		Hello proxiedHello = (Hello) pfBean.getObject(); // FactoryBean이므로 getObject()로 생성된 프록시 가져옴.
+		
+		assertThat(proxiedHello.sayHello("Toby"), is("HELLO TOBY"));
+		assertThat(proxiedHello.sayHi("Toby"), is("HI TOBY"));
+		assertThat(proxiedHello.sayThankYou("Toby"), is("THANK YOU TOBY"));
+	}
+	
+	static class UppercaseAdvice implements MethodInterceptor {
+		public Object invoke(MethodInvocation invocation) throws Throwable {
+			String ret = (String)invocation.proceed(); // 리플렉션의 메서드와 달리 타깃 오브젝트 전달 불필요.
+			return ret.toUpperCase();
+		}
+	}
+	
+	// 타깃과 프록시가 구현할 인터페이스
+	static interface Hello {
+		String sayHello(String name);
+		String sayHi(String name);
+		String sayThankYou(String name);
+	}
+	
+	// 타깃 클래스
+	static class HelloTarget implements Hello {
+		public String sayHello(String name) { return "Hello " + name; }
+		public String sayHi(String name) { return "Hi " + name; }
+		public String sayThankYou(String name) { return "Thank You " + name; }
+	}
+}
+
+* **어드바이스**: 타깃이 필요 없는 순수한 부가기능
+  * InvocationHandler를 구현했을 때와 달리 MethodInterceptor를 구현할 때는 타깃 오브젝트가 등장하지 않음.
+  <br>-> MethodInterceptor는 메서드 정보와 타깃 오브젝트가 담긴 MethodInvocatino 오브젝트가 전달됨.
+  * `MethodInvocation`
+    * 일조의 콜백 오브젝트로, `proceed()` 메서드를 실행하면 타깃 오브젝트의 메서드를 내부적으로 실행
+    * MethodInvocation 구현 클래스는 일종의 공유 가능한 템플릿처럼 동작!
+    <br>-> JDK 다이내믹 프록시 코드와의 가장 큰 차이점이자 ProxyFactoryBean의 장점
+  * ProxyFactoryBean은 작은 단위의 템플릿/콜백 구조를 이용해서 적용함.
+  <br>-> **템플릿 역할을 하는 MethodInvocation을 싱글톤으로 두고 공유 가능**
+  * 
