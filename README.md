@@ -906,6 +906,7 @@ public class DynamicProxyTest {
 }
 
 * **어드바이스**: 타깃이 필요 없는 순수한 부가기능
+  * **타깃 오브젝트에 종속되지 않으며 타깃 오브젝트에 적용하는 부가기능을 담은 오브젝트**
   * InvocationHandler를 구현했을 때와 달리 MethodInterceptor를 구현할 때는 타깃 오브젝트가 등장하지 않음.
   <br>-> MethodInterceptor는 메서드 정보와 타깃 오브젝트가 담긴 MethodInvocatino 오브젝트가 전달됨.
   * `MethodInvocation`
@@ -914,4 +915,12 @@ public class DynamicProxyTest {
     <br>-> JDK 다이내믹 프록시 코드와의 가장 큰 차이점이자 ProxyFactoryBean의 장점
   * ProxyFactoryBean은 작은 단위의 템플릿/콜백 구조를 이용해서 적용함.
   <br>-> **템플릿 역할을 하는 MethodInvocation을 싱글톤으로 두고 공유 가능**
-  * 
+  * `addAdvice()`
+    * MethodInterceptor 설정 시 수정자 대신 사용하는 메서드
+    * MethodInterceptor가 Advice 인터페이스를 상속하는 서브 인터페이스기 때문에 addAdvice 메서드 사용
+    * MethodInterceptor에 여러 개의 어드바이스를 추가하는 기능
+    <br>-> 부가기능 추가 시 프록시, 프록시 팩토리빈도 추가해줘야 했던 문제 해결
+  * 인터페이스를 제공받지 않아도 ProxyFactoryBean에 있는 인터페이스 자동검출 기능을 사용하여
+  <br>타깃 오브젝트가 구현하고 있는 인터페이스 정보를 알아내고 이를 구현하는 프록시를 생성함.
+
+* **포인트컷**: 부가기능 적용 대상 메서드 선정 방법
