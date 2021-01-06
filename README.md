@@ -789,3 +789,73 @@ public class UserServiceTest {
 ### 6.3.5 프록시 팩토리 빈 방식의 장점과 한계
 
 * 한 번 부가기능을 가진 프록시를 생성하는 프록시 빈을 만들어두면 타깃의 타입에 상관없이 재사용 가능.
+
+* 프록시 팩토리 빈의 재사용
+  * TxProxyFactoryBean은 코드의 수정 없이도 다양한 클래스에 적용 가능
+  <br>-> 타깃 오브젝트에 맞는 프로퍼티 정보를 설정해서 빈으로 등록하면 됨.
+  * 프록시 팩토리 빈을 이용하면 프록시 기법을 아주 빠르고 효과적으로 적용 가능
+  
+```java
+// 리스트 6-38 트랜잭션 없는 서비스 빈 설정
+<bean id="coreService" class="complex.module.CoreServiceImpl">
+	<property name="coreDao" ref="coreDao" />
+</bean>
+
+// 리스트 6-39 아이디를 변경한 CoreService 빈
+<bean id="coreServiceTarget" class="complex.module.CoreServiceImpl">
+	<property name="coreDao" ref="coreDao" />
+</bean>
+
+// 리스트 6-40 CoreService에 대한 트랜잭션 프록시 팩토리 빈
+<bean id="coreService" class="springbook.service.TxProxyFactoryBean">
+	<property naem="target" ref="coreServiceTarget" /> // 타깃 지정
+	<property name="transactionManager" ref="transactionManager" />
+	<property name="pattern" value="" />
+	<property name="serviceInterface" ref="complex.module.CoreService" /> // 프록시가 구현할 인터페이스
+</bean>
+```
+
+* 프록시 팩토리 빈 방식의 장점
+  * 데코레이터 패턴이 적용된 프록시를 적극적으로 활용하지 못하는 2가지 문제점
+    * 프록시를 적용할 대상이 구현하고 있는 인터페이스를 구현하는 프록시 클래스를 일일이 만들어야 하는 번거로움
+    * 부가적인 기능이 여러 메서드에 반복적으로 나타나게 돼서 코드 중복의 문제가 발생
+  * 프록시 팩토리 빈 방식은 이 2가지 문제점을 모두 해결!
+    * 다이내믹 프록시에 팩토리 빈을 이용한 DI를 적용하면 번거로운 다이내믹 프록시 생성 코드 제거 가능
+    * 하나의 핸들러 메서드를 구현하는 것만으로 여러 메서드에 부가기능 부여 가능
+
+* 프록시 팩토리 빈의 한계
+  * 프록시를 통해 타깃에 부가기능을 제공하는 것은 메서드 단위로 일어나는 일
+  <br>-> 한 번에 여러 클래스에 공통적인 부가기능을 제공하는 일은 지금까지 방법으로는 불가능
+  * 하나의 타깃에 여러 개의 부가기능을 적용하려 할 때도 문제
+  <br>-> XML로 가능은 하지만 설정 파일이 급격히 복잡해진다!
+  * TransactionHandler 오브젝트가 프록시 팩토리 빈 개수만큼 만들어진다.
+  <br>-> 동일한 기능을 제공하는 코드임에도 타깃 오브젝트가 달라지면 새로운 Handler 오브젝트를 만들어야 함.
+
+
+### 6.4 스프링의 프록시 팩토리 빈
+
+
+### 6.4.1 ProxyFactoryBean
+
+* 스프링은 일관된 방법으로 프록시를 만들 수 있게 도와주는 추상 레이어를 제공
+  * 생성된 프록시는 스프링의 빈으로 등록돼야 함.
+  * 스프링은 프록시 오브젝트를 생성해주는 기술을 추상화한 팩토리 빈을 제공
+
+* `ProxyFactoryBean`
+  * 프록시를 생성해서 빈 오브젝트로 등록하게 해주는 팩토리 빈
+  * 순수하게 프록시를 생성하는 작업만을 담당
+  * 프록시를 통해 제공해줄 부가기능은 별도의 빈에 둘 수 있음
+
+* `MethodInterceptor`
+  * ProxyFactoryBean이 생성하는 프록시에서 사용할 부가기능을 구현하는 인터페이스
+  * InvocationHandler와 다른점
+    * InvocationHandler의 Invoke() 메서드는 타깃 오브젝트에 대한 정보를 제공하지 않음.
+    <br>-> 타깃은 InvocationHandler가 구현한 클래스가 직접 알고 있어야 함.
+    * MethodInterceptor의 Invoke() 메서드는 ProxyFactoryBean으로부터 타깃 오브젝트 정보도 제공받음.
+    <br>-> MethodInterceptor는 타깃 오브젝트에 상관없이 독립적으로 생성 가능
+    <br>-> 타깃이 다른 여러 프록시에서 함께 사용할 수 있고 싱글톤 빈으로 등록 가능
+
+```java
+// 리스트 6-41 스프링 ProxyFactoryBean을 이용한 다이내믹 프록시 테스트
+
+```
