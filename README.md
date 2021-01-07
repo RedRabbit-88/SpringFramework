@@ -924,3 +924,136 @@ public class DynamicProxyTest {
   <br>타깃 오브젝트가 구현하고 있는 인터페이스 정보를 알아내고 이를 구현하는 프록시를 생성함.
 
 * **포인트컷**: 부가기능 적용 대상 메서드 선정 방법
+  * **메서드 선정 알고리즘을 담은 오브젝트**
+  * 여러 프록시가 공유하는 MethodInterceptor에 특정 프록시에만 적용되는 패턴을 넣으면 문제가 됨.
+  * MethodInterceptor에는 재사용 가능한 순수한 부가기능 제공 코드만 남기고 프록시에 부가기능 적용 메서드를 넣으면?
+    * InvocationHandler가 타깃과 메서드 선정 알고리즘 코드에 의존하게 됨! 확장이 불가능!
+    * DI를 통해 빈으로 분리할 수는 있지만 빈으로 구성된 InvocationHandler 오브젝트는 특정 타깃을 위한 프록시에 제한됨.
+
+* 어드바이스와 포인트 컷은 모두 프록시에 DI로 주입되서 사용됨.
+<br>여러 프록시에서 공유가 가능하도록 만들어지기 때문에 싱글톤 빈으로 등록 가능.
+
+* 어드바이스는 JDK 다이내믹 프록시의 InvocationHandler와 달리 직접 타깃을 호출하지 않음.
+
+* 어드바이스가 부가기능을 부여하는 중에 타깃 메서드의 호출이 필요하면 프록시로부터 전달받은
+<br>MethodInvocation 타입 콜백 오브젝트의 `proceed()` 메서드를 호출하면 됨.
+  * Invocation 콜백은 타깃 오브젝트의 레퍼런스를 갖고 있고 이를 이용해 타깃 메서드를 직접 호출
+    * 어드바이스가 일종의 템플릿
+    * 타깃 호출기능을 갖고 있는 MethodInvoation 오브젝트가 콜백
+
+* 어드바이스도 독립적인 싱글톤 빈으로 등록하고 DI를 주입해서 여러 프록시가 사용할 수 있게 생성 가능.
+
+* **어드바이저 = 포인트컷(메서드 선정 알고리즘) + 어드바이스(부가기능)**
+
+```java
+// 리스트 6-42 포인트컷까지 적용한 ProxyFactoryBean
+@Test
+public void pointcutAdvisor() {
+	ProxyFactoryBean pfBean = new ProxyFactoryBean();
+	pfBean.setTarget(new HelloTarget());
+	
+	// 메서드 이름을 비교해서 대상을 선정하는 알고리즘을 제공하는 포인트컷 생성
+	NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+	// 이름 비교조건 설정
+	pointcut.setMappedName("sayH*"); 
+	
+	// 포인트컷과 어드바이스를 Advisor로 묶어서 한 번에 추가
+	pfBean.addAdvisor(new DefaultPointcutAdvisor(pointcut, new UppercaseAdvice()));
+	
+	Hello proxiedHello = (Hello) pfBean.getObject();
+	
+	assertThat(proxiedHello.sayHello("Toby"), is("HELLO TOBY"));
+	assertThat(proxiedHello.sayHi("Toby"), is("HI TOBY"));
+	assertThat(proxiedHello.sayThankYou("Toby"), is("Thank You Toby")); 
+}
+```
+
+
+### 6.4.2 ProxyFactoryBean 적용
+
+* TransactionAdvice
+<br>MethodInterceptor라는 Advice 서브 인터페이스를 구현해서 생성.
+```java
+// 리스트 6-43 트랜잭션 어드바이스
+package springbook.user.service;
+...
+public class TransactionAdvice implements MethodInterceptor {
+	PlatformTransactionManager transactionManager;
+
+	public void setTransactionManager(PlatformTransactionManager transactionManager) {
+		this.transactionManager = transactionManager;
+	}
+
+	// 타깃을 호출하는 기능을 가진 콜백 오브젝트를 프록시로부터 받음
+	// 덕분에 어드바이스는 특정 타깃에 의존하지 않고 재사용 가능
+	public Object invoke(MethodInvocation invocation) throws Throwable {
+		TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+		try {
+			// 콜백을 호출해서 타깃의 메서드를 실행. 호출 전후로 필요한 부가기능을 넣을 수 있음.
+			Object ret = invocation.proceed();
+			this.transactionManager.commit(status);
+			return ret;
+		} catch (RuntimeException e) { // JDK 다이내믹 프록시와 달리 예외를 포장하지 않고 그대로 전달.
+			this.transactionManager.rollback(status);
+			throw e;
+		}
+	}
+}
+```
+
+* 스프링 XML 설정파일
+  * 어드바이스를 빈으로 등록하고 트랜잭션 기능 적용을 위해 transactionManager를 DI
+  * 트랜잭션 적용 메서드 선정을 위해 포인트컷을 빈으로 등록
+  * 어드바이스와 포인트컷을 담을 어드바이저를 빈으로 등록
+  * ProxyFactoryBean을 등록하면서 프로퍼티에 타깃 빈과 어드바이저 빈을 지정
+```java
+// 리스트 6-44 트랜잭션 어드바이스 빈 설정
+<bean id="transactionAdvice" class="springbook.user.service.TransactionAdvice">
+	<property name="transactionManager" ref="transactionManager" />
+</bean>
+
+// 리스트 6-45 포인트컷 빈 설정
+<bean id="transactionPointcut" class="org.springframework.aop.support.NameMatchMethodPointcut">
+	<property name="mappedName" value="upgrade*" />
+</bean>
+
+// 리스트 6-46 어드바이저 빈 설정
+<bean id="transactionAdvisor" class="org.springframework.aop.support.DefaultPointcutAdvisor">
+	<property name="advice" ref="transactionAdvice" />
+	<property name="pointcut" ref="transactionPointcut" />
+</bean>
+
+// 리스트 6-47 ProxyFactoryBean 설정
+<bean id="userService" class="org.springframework.aop.framework.ProxyFactoryBean">
+	<property name="target" ref="userServiceImpl" />
+	<property name="interceptorNames">
+		<list>
+			<value>transactionAdvisor</value>
+		</list>
+	</property>
+</bean>
+```
+```java
+// 리스트 6-48 ProxyFactoryBean을 이용한 트랜잭션 테스트
+@Test 
+@DirtiesContext
+public void upgradeAllOrNothing() {
+	TestUserService testUserService = new TestUserService(users.get(3).getId());
+	testUserService.setUserDao(userDao);
+	testUserService.setMailSender(mailSender);
+	
+	// userService 빈을 스프링의 ProxyFactoryBean으로 변환
+	ProxyFactoryBean txProxyFactoryBean = context.getBean("&userService", ProxyFactoryBean.class);
+	txProxyFactoryBean.setTarget(testUserService);
+	// FactoryBean 타입이므로 동일하게 getObject()를 이용해서 프록시를 가져옴.
+	UserService txUserService = (UserService) txProxyFactoryBean.getObject();
+	...
+}
+```
+
+* ProxyFactoryBean은 스프링의 DI와 템플릿/콜백 패턴, 서비스 추상화 등의 기법이 모두 적용됨.
+<br>-> 독립적이며, 여러 프록시가 공유할 수 있는 어드바이스와 포인트컷으로 확장 기능 분리 가능.
+
+
+### 6.5 스프링 AOP
+
