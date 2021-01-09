@@ -1283,7 +1283,7 @@ public class UserServiceTest {
 * 포인트컷 표현식 문법 = **AspectJ 포인트컷 표현식**
   * AspectJ 포인트컷 표현식은 포인트컷 지시자를 이용해 작성
   <br>-> 대표적으로 `execution()`을 사용
-  * `execution([접근제한자 패턴] 타입패턴 [타입패턴.]이름패턴 (타입패턴 | ".", ...) [throws 예외패턴])
+  * `execution([접근제한자 패턴] 타입패턴 [타입패턴.]이름패턴 (타입패턴 | ".", ...) [throws 예외패턴])`
     * [접근제한자 패턴]: public, private와 같은 접근제한자. 생략 가능
     * 타입패턴: 리턴값의 타입패턴
     * [타입패턴.]: 패키지와 클래스 이름에 대한 패턴. 생락 가능. 연결시 . 사용
@@ -1316,3 +1316,36 @@ public void methodSignaturePointcut() throws SecurityException, NoSuchMethodExce
 					Target.class.getMethod("method"), null), is(false));
 }
 ```
+
+* 포인트컷 표현식 종류
+  * `execution(int minus(int, int));`
+  <br>int 리턴 타입. minus라는 메서드명, 2개의 int 파라미터를 가진 모든 메서드를 허용하는 포인트컷 표현식
+  * `execution(* minus(int, int));`
+  <br>위와 동일하지만 리턴 타입을 상관하지 않는 포인트컷 표현식
+  * `execution(* *(..));`
+  <br>리턴 타입, 메서드명, 파라미터에 상관없이 모든 메서드에 적용되는 포인트컷 표현식
+
+* 포인트컷 표현식을 이용하는 포인트컷 적용
+  * AspectJ 포인트컷 표현식은 메서드를 선정하는데 편리하게 쓸 수 있는 강력한 표현식 언어
+  * `bean()`: 빈의 이름으로 적용 대상을 선정하는 포인터컷 지시자
+  * 특정 애노테이션이 타입, 메서드, 파라미터에 적용되어 있는 것을 보고 메서드를 선정하는 포인트컷도 생성 가능
+  <br>`@annotation(org.springframework.transaction.annotation.Transactional)`
+  <br>-> @Transactional 애노테이션이 적용된 메서드를 선정
+  * 포인트컷 표현식을 사용하면 로직이 짧은 문자열에 담기기 때문에 클래스나 코드를 추가할 필요 없음
+  <br>-> 코드와 설정이 단순해짐!
+  * 반면 문자열로 된 표현식이므로 런타임 시점까지 문법의 검증이나 기능 확인이 되지 않는다는 단점도 존재.
+
+```java
+// 리스트 6-65 포인트컷 표현식을 사용한 빈 설정
+// 클래스 이름에 적용되는 패턴은 클래스 이름 패턴이 아닌 타입 패턴
+// TestUserService 클래스는 비록 이름은 다르지만 타입을 따져보면
+// TestUserService 클래스이자 슈퍼 클래스인 UserServiceImpl, 구현 인터페이스인 UserService 3가지가 모두 적용
+// TestUserService 클래스로 정의된 빈은 UserServiceImpl 타입이기 때문에 타입 패턴 조건을 충족
+<bean id="transactionPointcut" class="org.springframework.aop.aspectj.AspectJExpressionPointcut">
+	<property name="expression" value="execution(* *..*ServiceImpl.upgrade*(..))" />
+</bean>
+```
+
+
+### 6.5.4 AOP란 무엇인가?
+
