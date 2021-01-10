@@ -1499,4 +1499,112 @@ public void methodSignaturePointcut() throws SecurityException, NoSuchMethodExce
 ### 6.6 트랜잭션 속성
 
 
-### 6.6.1 트랜잭션 
+### 6.6.1 트랜잭션 정의
+
+* 트랜잭션 전파 (Transaction Propagation)
+  * 트랜잭션의 경계에서 이미 진행 중인 트랜잭션이 있을 때 또는 없을 때 어떻게 동작할 것인가를 결정하는 방식
+
+* 트랜잭션 전파 속성
+  * PROPAGATION_REQUIRED
+    * 가장 많이 사용되는 트랜잭션 전파 속성
+    * 진행 중인 트랜잭션이 없으면 새로 시작하고, 이미 시작된 트랜잭션이 있으면 이에 참여
+    * `DefaultTransactionDefinition`의 트랜잭션 전파 속성
+  * PROPAGATION_REQUIRES_NEW
+    * 항상 새로운 트랜잭션을 시작
+    * 독립적인 트랜잭션이 보장돼야 하는 코드에 적용 가능
+  * PROPAGATION_NOT_SUPPORTED
+    * 트랜잭션 없이 동작하도록 설정
+    * 특별한 메서드만 트랜잭션 속성에서 제외하려 할 때 사용
+    * 모든 메서드에 AOP가 적용되게 하고, 특정 메서드의 트랜잭션 전파 속성만 설정해서 트랜잭션 없이 동작하도록 설정
+
+* 격리수준 (Isolation level)
+  * 모든 DB 트랜잭션은 격리수준을 갖고 있어야 함.
+  * 적절하게 격리수준을 조정해서 가능한 한 많은 트랜잭션을 동시에 진행시키면서도 문제가 발생하지 않게 하는 제어가 필요
+  * 기본적으로 DB에 설정되어 있지만 JDBC 드라이버나 DataSource 등에서 재설정 가능.
+  * 필요하다면 트랜잭션 단위로 격리수준 조정 가능
+
+* 제한시간 (Timeout)
+  * 트랜잭션을 수행하는 제한시간을 설정 가능
+  * `DefaultTransactionDefinition`의 기본 설정은 제한시간이 없음.
+  * PROPAGATION_REQUIRED, PROPAGATION_REQUIRES_NEW와 같이 사용해야 의미가 있음.
+
+* 읽기전용 (Read only)
+  * 트랜잭션 내에서 데이터 조작 시도를 막아줄 수 있음.
+
+
+### 6.6.2 트랜잭션 인터셉터와 트랜잭션 속성
+
+* 메서드 별로 다른 트랜잭션 정의를 적용하려면 어드바이스의 기능을 확장해야 함.
+
+* TransactionInterceptor 어드바이스
+  * TransactionAdvice와 작동 방식은 동일
+  * 트랜잭션 정의를 메서드 이름 패턴을 이용해서 다르게 지정할 수 있는 방법을 추가로 제공
+  * 프로퍼티 타입: PlatformTransactionManager, Properties
+  * `TransactionAttribute`
+    * Properties 타입의 2번째 프로퍼티
+    * 트랜잭션 속성을 정의한 프로퍼티
+  * TransactionInterceptor에는 2가지 종류의 예외 처리 방식이 존재
+    * 런타임 예외가 발생하면 트랜잭션은 롤백
+    * 타깃 메서드가 런타임 예외가 아닌 체크 예외를 던지는 경우 의미 있는 리턴으로 판단하고 트랜잭션 커밋
+  * TransactionAttribute에 `rollback()` 속성을 둬서 기본 원칙과 다른 예외처리가 가능하게해 줌.
+  <br>이를 활용하면 특정 체크 예외의 경우는 트랜잭션을 롤백하고 특정 런타임 예외에 대해서는 트랜잭션 커밋 가능
+
+* 메서드 이름 패턴을 이용한 트랜잭션 속성 지정
+  * 트랜잭션 속성은 문자열로 정의 가능
+  <br>PROPAGATION_NAME, ISOLATION_NAME, readOnly, timout_NNNN, -Exception1, +Exception2
+    * PROPAGATION_NAME: 트랜잭션 전파 방식. PROPAGATION_ 으로 시작 **(필수)**
+    * ISOLATION_NAME: 격리수준. ISOLATION_ 으로 시작
+    * readOnly: 읽기전용 항목. 디폴트는 읽기 전용이 아님
+    * timeout_NNNN: 제한시간. timeout_ 으로 시작하고 **초 단위 시간**을 뒤에 붙인다.
+    * -Exception1: 체크 예외 중에서 롤백 대상으로 추가할 것들. 한 개 이상 등록 가능
+    * +Exception2: 런타임 예외지만 롤백시키지 않을 예외들. 한 개 이상 등록 가능
+```java
+// 리스트 6-71 트랜잭션 속성 정의 예
+<bean id='transactionAdvice" class="org.springframework.transaction.interceptor.TransactionInterceptor">
+	<property name="transactionManager" ref="transactionManager" />
+	<property name=transactionAttributes">
+		<props>
+			<prop key="get*">PROPAGATION_REQUIRED,readOnly,timeout_30</prop>
+			<prop key="upgrade*">PROPAGATION_REQUIRED_NEW,ISOLATION_SERIALIZABLE</prop>
+			<prop key="*">PROPAGATION_REQUIRED</prop>
+		</props>
+	</property>
+</bean>
+```
+
+* 리스트 6-71 분석
+  * `<prop key="get*">`: 이름이 get으로 시작하는 모든 메서드에 대한 속성
+  * `<prop key="upgrade*">`: 이름이 upgrade로 시작하는 메서드는 항상 독립적인 트랜잭션으로 실행
+  * `<prop key="*">`: 그 외의 모든 메서드에 대한 속성 지정
+
+* tx 네임스페이스를 이용한 설정 방법
+```java
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+						http://www.springframework.org/schema/aop 
+						http://www.springframework.org/schema/aop/spring-aop-3.0.xsd
+						http://www.springframework.org/schema/tx 
+						http://www.springframework.org/schema/tx/spring-tx-3.0.xsd">
+	...
+	// 트랜잭션 매니저의 빈 아이디가 transactionManager라면 transaction-manager 속성 생략 가능
+	<tx:advice id="transactionAdvice" transaction-manager="transactionManager">
+		<tx:attributes>
+			<tx:method name="get*" propagation="REQUIRED" read-only="true" timeout="30" />
+			<tx:method name="upgrade*" propagation="REQUIRED_NEW" isolation="SERIALIZABLE" />
+			<tx:method name="*" propagation="REQUIRED" />
+		</tx:attributes> 
+	</tx:advice>
+	...
+</beans>
+```
+
+
+### 6.6.3 포인트컷과 트랜잭션 속성의 적용 전략
+
+* 포인트컷 표현식과 트랜잭션 속성을 정의할 때 따르면 좋은 몇 가지 전략
+  * 트랜잭션 포인트컷 표현식은 타입 패턴이나 빈 이름을 이용한다.
