@@ -197,4 +197,29 @@ public class SimpleSqlService implements SqlService {
 * JAXB는 XML 문서의 구조를 정의한 스키마를 이용해서, 매핑할 오브젝트의 클래스까지 자동으로 만들어주는 **컴파일러**도 제공
   * 스키마 컴파일러를 통해 자동생성된 오브젝트에는 매핑정보가 애노테이션으로 담겨 있음.
   * JAXB API는 애노테이션에 담긴 정보를 이용해서 XML과 매핑된 오브젝트 트리 사이의 자동변환 작업을 수행
-  <br>XML 스키마 <-> 스키마 컴파일러 <-> XML정보를 담을 수 있는 매핑용 클래스
+  <br>`XML 스키마 <-> 스키마 컴파일러 <-> XML정보를 담을 수 있는 매핑용 클래스`
+
+* SQL 맵을 위한 스키마 작성과 컴파일
+
+```java
+// 리스트 7-12 SQL 맵 XML 문서
+<sqlmap>
+	<sql key="userAdd">insert into users(id, name, password, email, level, login recommend) values(?, ?, ?, ?, ?, ?, ?)</sql>
+	...
+</sqlmap>
+
+// 리스트 7-13 SQL 맵 문서에 대한 스키마
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="http://www.epril.com/sqlmap"
+	xmlns:tns="http://www.epril.com/sqlmap" elementFormDefault="qualified">
+
+	<element name="sqlmap">
+		<complexType>
+			<sequence>
+				<element name"sql" maxOccurs="unbounded" type="tns:sqlType" />
+			</sequence>
+		</complexType>
+	</element>
+</schema>
+```
