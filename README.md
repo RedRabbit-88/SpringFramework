@@ -26,4 +26,27 @@ https://github.com/RedRabbit-88/SpringFramework/wiki/5%EC%9E%A5-%EC%84%9C%EB%B9%
 https://github.com/RedRabbit-88/SpringFramework/wiki/6%EC%9E%A5-AOP#6%EC%9E%A5-aop
 
 
-## 7장
+## 7장 스프링 핵심 기술의 응용
+
+* 스프링의 3대 핵심 기술: **Ioc/DI, 서비스 추상화, AOP**
+
+
+### 7.1 SQL과 DAO의 분리
+
+* SQL 변경이 필요한 상황이 발생하면 SQL을 담고 있는 DAO 코드가 수정될 수 밖에 없음
+<br>-> SQL을 적절히 분리해 DAO 코드와 다른 파일이나 위치에 두고 관리가 필요
+
+
+### 7.1.1 XML 설정을 이용한 분리
+
+* 가장 쉬운 방법은 SQL을 스프링 XML 설정파일로 분리하는 것
+<br>-> 매번 새로운 SQL이 추가될 때마다 프로퍼티를 추가하고 DI를 위한 변수와 수정자 메서드도 만들어야 함.
+```java
+public class UserDaoJdbc implements UserDao {
+  private String sqlAdd;
+  
+  public void setSqlAdd(String sqlAdd) {
+    this.sqlAdd = sqlAdd;
+  }
+}
+```
