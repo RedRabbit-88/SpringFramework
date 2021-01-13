@@ -200,7 +200,9 @@ public class SimpleSqlService implements SqlService {
   <br>`XML 스키마 <-> 스키마 컴파일러 <-> XML정보를 담을 수 있는 매핑용 클래스`
 
 * SQL 맵을 위한 스키마 작성과 컴파일
-
+  * 스키마 파일을 생성 후 JAXB 컴파일러로 컴파일 시 자동으로 XML 문서 바인딩용 클래스가 생성됨.
+  * `xjc -p springbook.user.sqlservice.jaxb sqlmap.xsd -d src`
+  <br>          생성할 클래스의 패키지    변환할 스키마 파일  파일저장 위치
 ```java
 // 리스트 7-12 SQL 맵 XML 문서
 <sqlmap>
@@ -221,5 +223,171 @@ public class SimpleSqlService implements SqlService {
 			</sequence>
 		</complexType>
 	</element>
+
+	<element name="sqlType"> // <sql>에 대한 정의를 시작
+		<simpleContent>
+			<extension base="string"> // SQL 문장을 넣을 String 타입을 정의
+				<attribute name"key" use="required" type="string" /> // 검색을 위한 키값
+			</sequence>
+		</simpleContent>
+	</element>
 </schema>
+
+// 리스트 7-14 SqlmapType 클래스
+// 변환 작업에서 참고할 정보를 애노테이션으로 갖고 있음
+@XmlAccessorType(XmlAccessType.FIELD)
+@XmlType(name = "", propOrder = { "sql" })
+@XmlRootElement(name = "sqlmap")
+public class Sqlmap {
+    @XmlElement(required = true)
+    protected List<SqlType> sql; // <sql> 태그의 정보를 담은 SqlType 오브젝트를 리스트로 보유
+
+    public List<SqlType> getSql() {
+        if (sql == null) {
+            sql = new ArrayList<SqlType>();
+        }
+        return this.sql;
+    }
+}
+
+// 리스트 7-15 SqlType 클래스
+@XmlAccessorType(XmlAccessType.FIELD)
+@XmlType(name = "sqlType", propOrder = { "value" })
+public class SqlType { // <sql> 태그 한 개당 SqlType 오브젝트가 하나씩 생성됨.
+    @XmlValue
+    protected String value;
+    @XmlAttribute(required = true)
+    protected String key;
+
+    public String getValue() {
+        return value;
+    }
+
+    public void setValue(String value) {
+        this.value = value;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public void setKey(String value) {
+        this.key = value;
+    }
+}
 ```
+
+* 언마샬링
+  * 언마샬링(Unmarshalling): XML 문서를 읽어서 자바의 오브젝트로 변환하는 것
+  * 마샬링(Marshalling): 바인딩 오브젝트를 XML 문서로 변환하는 것
+```java
+// 리스트 7-16 테스트용 SQL 맵 XML 문서
+<?xml version="1.0" encoding="UTF-8"?>
+<sqlmap xmlns="http://www.epril.com/sqlmap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.epril.com/sqlmap ../../../../../sqlmap.xsd ">
+	<sql key="add">insert</sql>
+	<sql key="get">select</sql>
+	<sql key="delete">delete</sql>
+</sqlmap>
+
+// 리스트 7-17 JAXB 학습 테스트
+public class JaxbTest {
+	@Test
+	public void readSqlmap() throws JAXBException, IOException {
+		
+		String contextPath = Sqlmap.class.getPackage().getName(); 
+		JAXBContext context = JAXBContext.newInstance(contextPath); // 바인딩용 클래스들 위치를 가지고 JAXB 컨텍스트를 생성
+		Unmarshaller unmarshaller = context.createUnmarshaller(); // 언마샬러 생성
+		// 언마샬링을 하면 매핑된 오브젝트 트리의 루트인 Sqlmap을 돌려준다.
+		Sqlmap sqlmap = (Sqlmap) unmarshaller.unmarshal(
+				getClass().getResourceAsStream("sqlmap.xml")); // 테스트 클래스와 같은 폴더에 있는 XML 파일을 사용
+		
+		List<SqlType> sqlList = sqlmap.getSql();
+
+		// 리스트에 담긴 Sql 오브젝트를 가져와 XML 문서와 같은 정보를 갖고 있는지 확인
+		assertThat(sqlList.size(), is(3));
+		assertThat(sqlList.get(0).getKey(), is("add"));
+		assertThat(sqlList.get(0).getValue(), is("insert"));
+		assertThat(sqlList.get(1).getKey(), is("get"));
+		assertThat(sqlList.get(1).getValue(), is("select"));
+		assertThat(sqlList.get(2).getKey(), is("delete"));
+		assertThat(sqlList.get(2).getValue(), is("delete"));
+	}
+}
+```
+
+
+### 7.2.2 XML 파일을 이용하는 SQL 서비스
+
+* SQL 맵 XML 파일
+  * SQL을 DAO 로직의 일부라고 볼 수 있으므로 DAO와 같은 패키지에 두는 게 좋음
+```java
+<?xml version="1.0" encoding="UTF-8"?>
+<sqlmap xmlns="http://www.epril.com/sqlmap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.epril.com/sqlmap http://www.epril.com/sqlmap/sqlmap.xsd ">
+	<sql key="userAdd">insert into users(id, name, password, email, level, login, recommend) values(?,?,?,?,?,?,?)</sql>
+	<sql key="userGet">select * from users where id = ?</sql>
+	<sql key="userGetAll">select * from users order by id</sql>
+	<sql key="userDeleteAll">delete from users</sql>
+	<sql key="userGetCount">select count(*) from users</sql>
+	<sql key="userUpdate">update users set name = ?, password = ?, email = ?, level = ?, login = ?, recommend = ? where id = ?</sql>
+</sqlmap>
+```
+
+* XML SQL 서비스
+  * XML 문서에서 SQL을 가져올 때는 JAXB API를 사용
+  * 언제 JAXB를 사용해 XML 문서를 가져와야 할까?
+    * DAO가 SQL을 요청할 때마다 매번 XML 파일을 읽는 건 비효율적
+    * XML 파일로부터 읽은 내용은 어딘가에 저장해두고 DAO에서 요청이 올 때만 사용하도록 구성
+  * SQL 문장을 스프링의 빈 설정에서 완벽하게 분리하는데 성공
+  * 향후 SQL 수정이 필요시 별도의 XML 문서만 제공하면 됨.
+```java
+// 리스트 7-19 생성자 초기화 방법을 사용하는 XmlSqlService 클래스
+package springbook.user.sqlservice;
+...
+public class XmlSqlService implements SqlService {
+	// 읽어온 SQL을 저장해둘 맵
+	private Map<String, String> sqlMap = new HashMap<String, String>();
+	
+	// 스프링이 오브젝트를 만드는 시점에 SQL을 읽어오도록 생성자를 이용
+	public XmlSqlService() {
+		// JAXB API를 이용해 XML 문서를 오브젝트 트리로 읽어옴.
+		String contextPath = Sqlmap.class.getPackage().getName(); 
+		try {
+			JAXBContext context = JAXBContext.newInstance(contextPath);
+			Unmarshaller unmarshaller = context.createUnmarshaller();
+			InputStream is = UserDao.class.getResourceAsStream("sqlmap.xml");
+			Sqlmap sqlmap = (Sqlmap)unmarshaller.unmarshal(is);
+
+			// 읽어온 SQL을 맵으로 저장
+			for(SqlType sql : sqlmap.getSql()) {
+				sqlMap.put(sql.getKey(), sql.getValue());
+			}
+		} catch (JAXBException e) { // 복구 불가능한 예외를 불필요한 throws를 피하도록 런타임 예외로 포장
+			throw new RuntimeException(e);
+		} 
+	}
+
+	public String getSql(String key) throws SqlRetrievalFailureException {
+		String sql = sqlMap.get(key);
+		if (sql == null)  
+			throw new SqlRetrievalFailureException(key + "를 이용해서 SQL을 찾을 수 없습니다.");
+		else
+			return sql;
+	}
+}
+
+// 리스트 7-20 sqlService 설정 변경
+<bean id="sqlService" class="springbook.user.sqlservice.XmlSqlService">
+</bean>
+```
+
+
+### 7.2.3 빈의 초기화 작업
+
+* 몇 가지 개선 필요사항
+  * 생성자에서 예외가 발생할 수도 있는 복잡한 초기화 작업을 다루는 것은 좋지 않음.
+  <br>생성자 예외는 다루기 힘들고, 상속에도 불편하며 보안 문제도 있음.
+  <br>-> **초기 상태를 가진 오브젝트를 만들어놓고 별도의 초기화 메서드를 사용하는 방법이 나음.**
+  * 읽어들일 파일의 위치와 이름이 코드에 고정되어 있음.
+  <br>-> **유연한 변경을 위해 외부에서 DI로 설정하게 변경해야 함.**
