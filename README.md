@@ -482,3 +482,7 @@ public class XmlSqlService implements SqlService {
 	<property name="sqlmapFile" value="sqlmap.xml" />
 </bean>
 ```
+
+
+### 7.2.4 변화를 위한 준비: 인터페이스 분리
+
