@@ -391,3 +391,94 @@ public class XmlSqlService implements SqlService {
   <br>-> **초기 상태를 가진 오브젝트를 만들어놓고 별도의 초기화 메서드를 사용하는 방법이 나음.**
   * 읽어들일 파일의 위치와 이름이 코드에 고정되어 있음.
   <br>-> **유연한 변경을 위해 외부에서 DI로 설정하게 변경해야 함.**
+  * XmlSqlService 오브젝트에 대한 제어권이 작성한 코드에 있다면 오브젝트 생성 시점에 초기화 메서드를 호출하면 됨.
+  <br>-> XmlSqlService 오브젝트는 빈이므로 제어권이 스프링에 있음!
+  * 애노테이션을 이용한 빈 설정을 지원해주는 몇 가지 빈 후처리기가 존재
+    * context 네임스페이스를 사용해서 `<context:annotation-config/>` 태그를 설정파일에 넣을 경우
+    <br>빈 설정 기능에 사용할 수 있는 특별한 애노테이션 기능을 부여해주는 빈 후처리기들이 등록됨.
+```java
+// 리스트 7-21 SQL 맵 파일 이름 프로퍼티
+private String sqlmapFile;
+
+public void setSqlMapFile(String sqlmapFile) {
+	this.sqlmapFile = sqlmapFile;
+}
+
+// 리스트 7-22 생성자 대신 사용할 초기화 메서드
+public void loadSql() {
+	String contextPath = Sqlmap.class.getPackage().getName();
+	try {
+		...
+		// 프로퍼티로 설정을 통해 제공받은 파일 이름을 사용
+		InputStream is = UserDao.class.getResourceAsStream(this.sqlmapFile);
+		...
+	}
+}
+
+// 리스트 7-23 XmlSqlService 오브젝트의 초기화 방법
+// XmlSqlService 오브젝트의 제어권이 스프링에 있어서 사용 불가!
+XmlSqlService sqlProvider = new XmlSqlService();
+sqlProvider.setSqlmapFile("sqlmap.xml");
+sqlProvider.loadSql(); // 초기화
+
+// 리스트 7-24 context 네임스페이스 선언과 annotation-config 태그 설정
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+						http://www.springframework.org/schema/aop 
+						http://www.springframework.org/schema/aop/spring-aop-3.0.xsd
+						http://www.springframework.org/schema/context 
+						http://www.springframework.org/schema/context/spring-context-3.0.xsd
+						http://www.springframework.org/schema/tx 
+						http://www.springframework.org/schema/tx/spring-tx-3.0.xsd">
+	// @Transactional이 붙은 타입와 메서드에 트랜잭션 부가기능을 담은 프록시를 추가하도록 만들어주는 후처리기 등록
+	<tx:annotation-driven />
+	
+	// 코드의 애노테이션을 이용해서 부가적인 빈 설정 또는 초기화 작업을 해주는 후처리기 등록
+	<context:annotation-config />
+	...
+</beans>
+```
+
+* `@PostConstruct`
+  * 빈 오브젝트의 초기화 메서드를 지정하는데 사용
+  * `@PostConstruct` 애노테이션이 붙은 메서드가 수행되는 방식
+    1. 클래스로 등록된 빈의 오브젝트를 생성
+    2. DI 작업 수행
+    3. `@PostConstruct`가 붙은 메서드를 자동으로 실행
+  * `@PostConstruct` 애노테이션은 빈 오브젝트가 생성되고 의존 오브젝트와 설정 값을 넣어주는 DI 작업까지 마친 후에 호출됨.
+  <br>-> **`@PostConstruct`를 단 메서드의 코드는 모든 프로퍼티의 값이 준비됐다고 가정하고 작성하면 됨!**
+  * 스프링 컨테이너의 초기 작업 순서
+    1. XML 빈 설정을 읽는다.
+    <br>`applicationContext.xml`
+    2. 빈의 오브젝트를 생성한다.
+    <br>`<bean id=".." class="ClassName" >`
+    3. 프로퍼티에 의존 오브젝트 또는 값을 주입한다.
+    ```java
+    <property name=".." value="xyz" />
+    <property name=".." ref="beanId" />
+    ```
+    4. 빈이나 태그로 등록된 후처리기를 동작시킨다. -> 코드에 달린 애노테이션에 대한 부가작업 진행
+    ```java
+    @PostConstruct
+    public void init() { ... }
+    ```
+    
+```java
+// 리스트 7-25 @PostConstruct 초기화 메서드
+public class XmlSqlService implements SqlService {
+	...
+	@PostConstruct // loadSql() 메서드를 빈의 초기화 메서드로 지정
+	public void loadSql() { ... }
+}
+
+// 리스트 7-26 sqlmapFile 프로퍼티 추가
+<bean id="sqlService" class="springbook.user.sqlservice.XmlSqlService">
+	<property name="sqlmapFile" value="sqlmap.xml" />
+</bean>
+```
