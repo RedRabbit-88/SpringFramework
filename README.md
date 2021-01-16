@@ -658,3 +658,130 @@ public class XmlSqlService implements SqlService, SqlRegistry, SqlReader {
 
 ### 7.2.6 디폴트 의존관계
 
+* 확장 가능한 기반 클래스
+  * SqlRegistry와 SqlReader를 이용하는 가장 간단한 SqlService 구현 클래스 생성
+  * XmlSqlService 코드에서 의존 인터페이스와 구현코드를 제거
+  * BaseSqlService를 sqlService 빈으로 등록하고 SqlReader와 SqlRegistry를 구현한 클래스 역시 빈으로 등록해서 DI
+  * DI를 적용했으니 언제든지 BaseSqlService의 코드에는 영향을 주지 않은 채 SqlReader와 SqlRegistry의 구현 클래스는 자유롭게 변경해서 기능 확장 가능
+```java
+// 리스트 7-37 SqlReader와 SqlRegistry를 사용하는 SqlService 구현 클래스
+public class BaseSqlService implements SqlService {
+	// BaseSqlService를 상속받아서 사용하는 서브클래스에서 접근 가능하도록 protected로 선언
+	protected SqlReader sqlReader;
+	protected SqlRegistry sqlRegistry;
+		
+	public void setSqlReader(SqlReader sqlReader) {
+		this.sqlReader = sqlReader;
+	}
+
+	public void setSqlRegistry(SqlRegistry sqlRegistry) {
+		this.sqlRegistry = sqlRegistry;
+	}
+
+	@PostConstruct
+	public void loadSql() {
+		this.sqlReader.read(this.sqlRegistry);
+	}
+
+	public String getSql(String key) throws SqlRetrievalFailureException {
+		try {
+			return this.sqlRegistry.findSql(key);
+		} 
+		catch(SqlNotFoundException e) {
+			throw new SqlRetrievalFailureException(e);
+		}
+	}
+}
+
+// 리스트 7-38 HashMap을 이용하는 SqlRegistry 클래스
+public class HashMapSqlRegistry implements SqlRegistry {
+	private Map<String, String> sqlMap = new HashMap<String, String>();
+
+	public String findSql(String key) throws SqlNotFoundException {
+		String sql = sqlMap.get(key);
+		if (sql == null)  throw new SqlRetrievalFailureException(key + "을 이용해서 SQL을 찾을 수 없습니다.");
+		else return sql;
+	}
+
+	public void registerSql(String key, String sql) { sqlMap.put(key, sql);	}
+}
+
+// 리스트 7-39 JAXB를 사용하는 SqlReader 클래스
+public class JaxbXmlSqlReader implements SqlReader {
+	private String sqlmapFile; // sqlmapFile은 SqlReader의 특정 구현 방법에 종속되는 프로퍼티로 설정
+
+	public void setSqlmapFile(String sqlmapFile) { this.sqlmapFile = sqlmapFile; }
+
+	public void read(SqlRegistry sqlRegistry) {
+		...
+	}
+}
+
+// 리스트 7-40 SqlReader와 SqlRegistry의 독립적인 빈 설정
+<!-- sql service -->
+<bean id="sqlService" class="springbook.user.sqlservice.BaseSqlService">
+	// 독립시킨 reader, registry을 참조하도록 ref 수정
+	<property name="sqlReader" ref="sqlReader" />
+	<property name="sqlRegistry" ref="sqlRegistry" />
+</bean>
+
+<bean id="sqlReader" class="springbook.user.sqlservice.JaxbXmlSqlReader">
+	<property name="sqlmapFile" value="sqlmap.xml" />
+</bean>
+
+<bean id="sqlRegistry" class="springbook.user.sqlservice.HashMapSqlRegistry">
+</bean>
+```
+
+* 디폴트 의존관계를 갖는 빈 만들기
+  * 디폴트 의존관계
+  <br>외부에서 DI 받지 않는 경우 기본적으로 자동 적용되는 의존관계
+  ```java
+  // 리스트 7-41 생성자를 통한 디폴트 의존관계 설정
+  public class DefaultSqlService extends BaseSqlService {
+  	public DefaultSqlService() {
+		// 생성자에서 디폴트 의존 오브젝트를 직접 만들어서 스스로 DI
+		setSqlReader(new JaxbXmlSqlReader());
+		setSqlRegistry(new HashMapSqlRegistry());
+	}
+  }
+  
+  // 리스트 7-42 디폴트 의존관계 빈의 설정
+  <bean id="sqlService" class="springbook.user.sqlservice.DefaultSqlService" />
+  ```
+  * 위의 설정으로 테스트를 돌려보면 실패!
+    * DefaultSqlService 내부에서 생성하는 JaxbXmlSqlReader의 sqlmapFile 프로퍼티가 비어있기 때문
+    * 디폴트 의존 오브젝트로 직접 넣어줄 때는 프로퍼티를 외부에서 직접 지정할 수 없다.
+  * sqlmapFile을 DefaultSqlService의 프로퍼티로 지정?
+    * JaxbXmlSqlReader는 디폴트 의존 오브젝트에 불과해서 적합하지 않음.
+    * 반드시 필요하지도 않은 sqlmapFile을 프로퍼티로 등록하는 건 적합하지 않음.
+  * 관례적으로 사용할 만한 이름을 정해서 디폴트로 지정!
+  ```java
+  // 리스트 7-43 디폴트 값을 갖는 JaxbXmlSqlReader
+  public class JaxbXmlSqlReader implements SqlReader {
+	private final String DEFAULT_SQLMAP_FILE = "sqlmap.xml";
+	private String sqlmapFile = DEFAULT_SQLMAP_FILE;
+	
+	// wqlmapFile 프로퍼티를 지정하면 지정된 파일이 사용되고, 아니라면 디폴트로 넣은 파일이 사용됨.
+	public void setSqlmapFile(String sqlmapFile) { this.sqlmapFile = sqlmapFile; }
+  }
+  ```
+  * **DI를 사용한다고 해서 항상 모든 프로퍼티 값을 설정에 넣고 모든 의존 오브젝트를 빈으로 일일이 지정할 필요는 없음**
+  * 자주 사용되는 의존 오브젝트는 미리 지정한 디폴트 의존 오브젝트를 설정 없이도 사용할 수 있게 만드는 것도 좋은 방법.
+  * **DefaultSqlService는 SqlService를 바로 구현한 것이 아니라 BaseSqlService를 상속했다는 점이 중요**
+    * DefaultSqlService는 BaseSqlService의 sqlReader와 sqlRegistry 프로퍼티를 그대로 갖고 있음
+    * 원한다면 언제든지 일부 또는 모든 프로퍼티를 변경 가능
+  ```java
+  // 리스트 7-44 디폴트 의존 오브젝트 대신 사용할 빈 선언
+  <bean id="sqlService" class="springbook.user.sqlservice.DefaultSqlService">
+  	<property name="sqlRegistry" ref=ultraSuperFastSqlRegistry" />
+  </bean>
+  ```
+  * 디폴트 의존 오브젝트 사용법의 단점
+    * 설정을 통해 다른 구현 오브젝트를 사용하게 해도 DefaultSqlService는 생성자에서 일단 디폴트 구현 오브젝트를 다 생성함.
+    * 불필요한 오브젝트를 생성하는 건 리소스를 불필요하게 소모함
+    * @PostContruct를 이용해서 프로퍼티가 설정되지 않았을 경우에만 디폴트 오브젝트를 만들도록 구성
+
+
+### 7.3 서비스 추상화 적용
+
