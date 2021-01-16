@@ -486,3 +486,64 @@ public class XmlSqlService implements SqlService {
 
 ### 7.2.4 변화를 위한 준비: 인터페이스 분리
 
+* XmlSqlService는 특정 포맷의 XML에서 SQL 데이터를 가져오고 이를 HashMap 타입의 맵 오브젝트에 저장
+  * **SQL을 가져오는 방법에 있어서 특정 기술에 고정되어 있음!**
+  * SQL을 가져오는 것과 보관해두고 사용하는 것은 독자적인 이유로 변경 가능한 독립적인 전략
+
+* 책임에 따른 인터페이스 정의
+  * XmlSqlService에서 독립적으로 변경 가능한 책임
+    * SQL 정보를 외부의 리소스로부터 읽어오는 기능
+    * 읽어온 SQL을 보관해두고 있다가 필요할 때 제공해주는 기능
+    * 서비스를 위해서 한 번 가져온 SQL을 필요에 따라 수정할 수 있게 하는 기능
+  * 기본적으로 SqlService를 구현해서 DAO에 서비스를 제공해주는 오브젝트가
+  <br>다른 책임을 가진 오브젝트와 협력해서 동작하도록 만들어야 함.
+  <br>-> 변경 가능한 기능은 전략 패턴을 적용해 별도의 오브젝트로 분리
+  * SqlService의 구현 클래스가 변경 가능한 책임을 가진 `SqlReader`와 `SqlRegistry` 2가지 타입의 오브젝트를 사용하게 만든다.
+    * SqlReader: SqlService에서 받은 읽기 요청을 SQL 리소스를 이용해서 처리하는 오브젝트
+    * SqlRegistry: SqlService에서 받은 SQL 등록/조회 요청을 SqlReader를 이용해서 처리하는 오브젝트
+  * SqlReader가 읽어오는 SQL 정보는 다시 SqlRegistry에 전달해서 등록되게 해야 함.
+  <br>-> **SqlReader에게 SqlRegistry 전략을 제공해주면서 이를 이용해 SQL 정보를 SqlRegistry에 저장하라고 요청**
+  ```java
+  // 리스트 7-27 SqlService 구현 클래스 코드
+  Map<String, String> sqls = sqlReader.readSql(); // Map이라는 구체적인 전송 타입을 강제하게 됨.
+  sqlRegistry.addSqls(sqls);
+  
+  // 리스트 7-28 변경된 SqlService 코드
+  // 불필요하게 SqlService 코드를 통해 특정 포맷으로 변환한 SQL 정보를 주고받을 필요 없이
+  // SqlReader가 직접 SqlRegistry에 SQL 정보를 등록
+  sqlReader.readSql(sqlRegistry); // SQL을 저장할 대상인 sqlRegistry 오브젝트를 전달
+  
+  // 리스트 7-29 등록 기능을 제공하는 SqlResgitry 메서드
+  interface SqlRegistry {
+  	// SqlReader는 읽어들인 SQL을 이 메서드를 이용해서 레지스트리에 저장
+	void registerSql(String key, String sql);
+	...
+  }
+  ```
+  * SqlReader는 내부에 갖고 있는 SQL 정보를 형식을 갖춰서 돌려주는 대신, SqlRegistry에 필요에 따라 등록을 요청할 때만 활용
+  * SqlRegistry가 일종의 콜백 오브젝트처럼 사용됨.
+  * SqlReader 입장에서는 SqlRegistry 인터페이스를 구현한 오브젝트를 런타임 시에 메서드 파라미터로 제공받아 사용하는 구조
+  <br>-> 일종의 코드에 의한 수동 DI
+  * SqlRegistry는 SqlService에게 등록된 SQL을 검색해서 돌려주는 기능을 제공
+  <br>-> SqlRegistry는 SqlService의 의존 오브젝트
+  ```
+  SqlService ---(SQL을 가져오도록 요청)---> SqlReader ---(SQL 등록)---> SqlRegistry
+             ---(SQL 검색)---> SqlRegistry
+  ```
+
+```java
+// 리스트 7-30 SqlRegistry 인터페이스
+package springbook.user.sqlservice;
+...
+public interface SqlRegistry {
+	void registerSql(String key, String sql); // SQL을 키와 함께 등록
+	String findSql(String key) throws SqlNotFoundException; // 키로 SQL을 검색. 실패 시 예외를 던짐
+}
+
+// 리스트 7-31 SqlReader 인터페이스
+public interface SqlReader {
+	// SQL을 외부에서 가져와 SqlRegistry에 등록
+	// 다양한 예외가 발생할 수 있지만 대부분 복구 불가능한 예외이므로 예외 선언 X
+	void read(SqlRegistry sqlRegistry);
+}
+```
