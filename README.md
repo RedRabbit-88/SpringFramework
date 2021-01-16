@@ -547,3 +547,114 @@ public interface SqlReader {
 	void read(SqlRegistry sqlRegistry);
 }
 ```
+
+
+### 7.2.5 자기참조 빈으로 시작하기
+
+* 다중 인터페이스 구현과 간접 참조
+  * 클래스의 코드는 인터페이스에 대해서만 알고 있고, 인터페이스를 통해서만 의존 오브젝트에 접근
+  * XmlSqlService를 3개의 인터페이스를 통해 구현하도록 변경
+    * SqlReader, SqlService, SqlRegistry 3개의 인터페이스를 구현
+    * XmlSqlService 내부에 SqlReader와 SqlRegistry를 넣고 이를 이용해서 접근
+```java
+// 리스트 7-32 SqlService의 DI 코드
+public class XmlSqlService implements SqlService {
+	// 의존 오브젝트를 DI 받을 수 있도록 인터페페이스 타입의 프로퍼티로 선언
+	private SqlReader sqlReader;
+	private SqlRegistry sqlRegistry;
+	
+	public void setSqlReader(SqlReader sqlReader) {
+		this.sqlReader = sqlReader;
+	}
+	
+	public void setSqlRegistry(SqlRegistry sqlRegistry) {
+		this.sqlRegistry = sqlRegistry;
+	}
+}
+
+// 리스트 7-33 SqlRegistry의 구현 부분
+public class XmlSqlService implements SqlService, SqlRegistry {
+	...
+	// sqlMap은 SqlRegistry 구현의 일부가 되며 외부에서 직접 접근 불가
+	private Map<String, String> sqlMap = new HashMap<>();
+	
+	public String findSql(String key) throws SqlNotFoundException {
+		String sql = sqlMap.get(key);
+		if (sql == null) throw new SqlNotFoundException(key + "에 대한 SQL을 찾을 수 없습니다.");
+		else return sql;
+	}
+	
+	// HashMap이라는 저장소를 사용하는 구체적인 구현방법에서 독립될 수 있도록 인터페이스 메서드로 접근
+	public void registerSql(String key, String sql) {
+		sqlMap.put(key, sql);
+	}
+	...
+}
+
+// 리스트 7-34 SqlReader의 구현 부분
+public class XmlSqlService implements SqlService, SqlRegistry, SqlReader {
+	...
+	// sqlmapFile은 SqlReader 구현의 일부
+	// SqlReader 구현 메서드를 통해서만 접근하도록 설정
+	private String sqlmapFile;
+	
+	public void setSqlmapFile(String sqlmapFile) {
+		this.sqlmapFile = sqlmapFile;
+	}
+	
+	// loadSql()에 있던 코드를 SqlReader로 가져옴
+	// 초기화를 위해 무엇을 할 것인가와 SQL을 어떻게 읽는지를 분리
+	public void read(SqlRegistry sqlRegistry) {
+		String contextPath = Sqlmap.class.getPackage().getName();
+		try {
+			JAXBContext context = JAXBContext.newInstance(contextPath);
+			Unmarshaller unmarshaller = context.createUnmarshaller();
+			InputStream is = UserDao.class.getResourceAsStream(sqlmapFile);
+			Sqlmap sqlmap = (Sqlmap)unmarshaller.unmarshal(is);
+			for (SqlType sql : sqlmap.getSql()) {
+				// SQL 저장 로직 구현에 독립적인 인터페이스 메서드를 통해 읽어들인 SQL과 키를 전달
+				sqlRegistry.registerSql(sql.getKey(), sql.getValue());
+			}
+		} catch (JAXBException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	...
+}
+
+// 리스트 7-35 SqlService 인터페이스 구현 부분
+public class XmlSqlService implements SqlService, SqlRegistry, SqlReader {
+	...
+	// loadSql() 초기화 메서드
+	// sqlReader에게 sqlRegistry를 전달하면서 SQL을 읽어서 저장해두도록 
+	@PostConstruct
+	public void loadSql() {
+		this.sqlReader.read(this.sqlRegistry);
+	}
+	
+	public String getSql(String key) throws SqlRetrievalFailureException {
+		try {
+			return this.sqlRegistry.findSql(key);
+		} catch(SqlNotFoundException e) {
+			throw new SqlRetrievalFailureException(e);
+		}
+	}
+}
+```
+
+* 자기참조 빈 설정
+  * SqlService의 메서드에서 SQL을 읽을 때는 SqlReader 인터페이스를 통해서,
+  <br>SQL을 찾을 때는 SqlRegistry 인터페이스를 통해 간접적으로 접근
+  * 책임과 관심사가 복잡하게 얽혀 있어서 확장이 힘들고 변경에 취약한 구조의 클래스를
+  <br>유연한 구조로 만들려고 할 때 처음 시도해볼 수 있는 방법
+```java
+<bean id="sqlService" class="springbook.user.sqlservice.XmlSqlService">
+	<property name="sqlReader" ref="sqlService" /> // 프로퍼티는 자기 자신을 참조 가능
+	<property name="sqlRegistry" ref="sqlService" />
+	<property name="sqlmapFile" value="sqlmap.xml" />
+</bean>
+```
+
+
+### 7.2.6 디폴트 의존관계
+
