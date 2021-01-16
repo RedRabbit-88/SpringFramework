@@ -785,3 +785,251 @@ public class JaxbXmlSqlReader implements SqlReader {
 
 ### 7.3 서비스 추상화 적용
 
+
+* JaxbXmlSqlReader 개선과제
+  * 자바에는 JAXB 외에도 다양한 XML과 자바오브젝트를 매핑하는 기술이 존재
+  <br>-> 필요에 따라 다른 기술로 손쉽게 바꿔서 사용할 수 있게 해야 함.
+  * XML 파일을 좀 더 다양한 소스에서 가져올 수 있게 만든다.
+
+
+### 7.3.1 OXM 서비스 추상화
+
+* 실전에서 자주 사용되는 XML과 자바오브젝트 매핑 기술
+  * Castor XML: 설정파일이 필요없는 인트로스펙션 모드를 지원하기도 하는 매우 간결하고 가벼운 바인딩 프레임워크
+  * JiBX: 뛰어난 퍼포먼스를 자랑하는 XML 바인딩 기술
+  * XmlBeans: 아파치 XML 프로젝트의 하나. XML의 정보셋을 효과적으로 제공
+  * Xstream: 관례를 이용해서 설정이 없는 바인딩을 지원하는 XML 바인딩 기술
+
+* OXM (Object-XML Mapping)
+<br>XML과 자바오브젝트를 매핑해서 상호 변환해주는 기술
+
+* OXM 프레임워크와 기술들은 기능 면에서 상호 호환성이 있음
+<br>JAXB를 포함해서 다석 가지 기술 모두 사용 목적이 동일하기 때문에 유사한 기능과 API를 제공
+
+* 스프링은 트랜잭션, 메일 전송뿐 아니라 OXM에 대해서도 서비스 추상화 기능을 제공함.
+  * 스프링이 제공하는 OXM 추상 계층의 API를 이용해 XML 문서와 오브젝트 사이의 변환을 처리 시
+  <br>코드 수정 없이도 OXM 기술을 자유롭게 바꿔서 적용 가능
+
+* OXM 서비스 인터페이스
+  * Unmarshaller 인터페이스
+    * SqlReader를 대체하는 인터페이스
+    * XML 파일에 대한 정보를 담은 Source 타입의 오브젝트를 받아
+    <br>설정에서 지정한 OXM 기술을 이용해 자바오브젝트 트리로 변환하고 루트 오브젝트를 돌려줌
+```java
+// 리스트 7-45 Unmarshaller 인터페이스
+package org.springframework.oxm; // spring-oxm 모듈 안에 정의되어 있음
+...
+import javax.xml.transform.Source;
+
+public interface Unmarshaller {
+	// 해당 클래스로 언마샬이 가능한지 확인해줌. 별로 사용할 일 없음.
+	boolean supports(Class<?> class);
+	
+	// source를 통해 제공받은 XML을 자바오브젝트 트리로 변환해서 그 루트 오브젝트를 돌려줌.
+	// 매핑 실패 시 추상화된 예외를 던진다. 서브클래스에 좀 더 세분화되어 있음.
+	Object unmarshal(Source source) throws IOException, XmlMappingException;
+}
+```
+
+* JAXB 구현 테스트
+  * `Jaxb2Marshaller`: JAXB를 이용하도록 만들어진 Unmarshaller 구현 클래스
+    * Jaxb2Marshaller 클래스는 Unmarshaller 인터페이스와 Marshaller 인터페이스를 모두 구현
+  ```java
+  // 리스트 7-46 JAXB용 Unmarshaller 빈 설정
+  <?xml version="1.0" encoding="UTF-8"?>
+  <beans xmlns="http://www.springframework.org/schema/beans"
+  	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-2.0.xsd">
+
+	<bean id="unmarshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">
+		<property name="contextPath" value="springbook.user.sqlservice.jaxb" />
+  	</bean>
+  </beans>
+  ```
+  * 추상 인터페이스인 Unmarshaller의 `unmarshal()` 메서드를 호출하면 Jaxb2Marshaller 빈이 알아서 작업 수행
+  ```java
+  package springbook.learningtest.spring.oxm;
+  ...
+  import org.springframework.oxm.Unmarshaller;
+  import javax.xml.transform.stream.StreamSource;
+
+  @RunWith(SpringJUnit4ClassRunner.class)
+  @ContextConfiguration
+  public class OxmTest {
+	@Autowired
+	Unmarshaller unmarshaller;
+	
+	@Test
+	public void unmarshallSqlMap() throws XmlMappingException, IOException  {
+		Source xmlSource = new StreamSource(getClass().getResourceAsStream("sqlmap.xml"));
+		// 어떤 OXM 기술이든 언마샬은 이 한 줄이면 끝.
+		Sqlmap sqlmap = (Sqlmap)this.unmarshaller.unmarshal(xmlSource);
+		
+		List<SqlType> sqlList = sqlmap.getSql();		
+		assertThat(sqlList.size(), is(3));
+		assertThat(sqlList.get(0).getKey(), is("add"));
+		...
+		assertThat(sqlList.get(2).getValue(), is("delete"));
+	}
+  }
+  ```
+
+* Castor 구현 테스트
+  * 서비스 추상화는 로우레벨의 기술을 필요에 따라 변경해서 사용하더라도 일관된 애플리케이션 코드를 유지할 수 있게 해줌.
+```java
+// 리스트 7-48 Castor용 매핑정보
+<?xml version="1.0"?>
+<!DOCTYPE mapping PUBLIC "-//EXOLAB/Castor Mapping DTD Version 1.0//EN" "http://castor.org/mapping.dtd">
+<mapping>
+    <class name="springbook.user.sqlservice.jaxb.Sqlmap">
+        <map-to xml="sqlmap" />
+        <field name="sql"
+               type="springbook.user.sqlservice.jaxb.SqlType"
+               required="true" collection="arraylist">
+            <bind-xml name="sql" node="element" />
+        </field>
+    </class>
+    <class name="springbook.user.sqlservice.jaxb.SqlType">
+        <map-to xml="sql" />
+        <field name="key" type="string" required="true">
+            <bind-xml name="key" node="attribute" />
+        </field>
+        <field name="value" type="string" required="true">
+            <bind-xml node="text" />
+        </field>
+    </class>
+</mapping>
+
+// 리스트 7-49 Castor 기술을 사용하는 언마샬러 적용
+<bean id="unmarshaller" class="org.springframework.oxm.castor.CastorMarshaller"> // Unmarshaller 인터페이스를 Castor API를 이용해서 구현한 클래스
+	<property name="mappingLocation" value="springbook/learningtest/spring/oxm/mapping.xml" />
+</bean>
+```
+
+
+### 7.3.2 OXM 서비스 추상화 적용
+
+* OxmSqlService 생성
+  * 스프링의 OXM 서비스 추상화 기능을 이용하는 SqlService
+  * SqlRegistry: DI할 수 있게 구성
+  * SqlReader: 스프링의 OXM 언마샬러를 이용하도록 OxmSqlService 내에 고정
+
+* 멤버 클래스를 참조하는 통합 클래스
+  * SqlReader 타입의 의존 오브젝트를 사용하되 이를 스태틱 멤버 클래스로 내장하고 자신만 사용할 수 있게 구성
+    * 의존 오브젝트를 자신만이 사용하도록 독점하는 구조로 만드는 방법
+    * 유연성은 조금 희생하더라도 내부적으로 낮은 결합도를 유지한 채로 응집도가 높은 구현을 만들 때 유용
+    * OxmSqlService가 내부적으로 OxmSqlReader를 갖고 있음
+  * OxmSqlService와 OxmSqlReader는 구조적으로는 강하게 결합되어 있지만 논리적으로는 명확하게 분리되는 구조
+  ```java
+  // 리스트 7-50 OxmSqlService 기본 구조
+  package springbook.user.sqlservice;
+  ...
+  public class OxmSqlService implements SqlService {
+	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
+	...
+	
+	// private 멤버 클래스로 정의해서 톱레벨 클래스인 OxmSqlService만 사용 가능하도록
+	private class OxmSqlReader implements SqlReader {
+		...
+	}
+  }
+  ```
+  * 스프링의 OXM 서비스 추상화를 사용하면 언마샬러를 빈으로 등록해야 함.
+  <br>-> 자꾸 늘어나는 빈의 개수와 반복되는 비슷한 DI 구조가 불편!
+  * BaseSqlService를 확장해서 디폴트 설정을 두는 방법으로 빈의 개수를 줄이고 설정을 단순하게 할 수는 있음.
+  <br>-> 디폴트로 내부에서 만드는 오브젝트의 프로퍼티를 외부에서 지정해주기가 힘들다!
+  * OxmSqlReader는 외부에 노출되지 않기 때문에 OxmSqlService에 의해서만 생성되며 스스로 빈으로 등록 불가능
+  <br>-> 자신이 DI를 통해 제공받아야 하는 프로퍼티가 있다면 OxmSqlService의 공개된 프로퍼티를 통해 간접적으로 DI
+  ```java
+  // 리스트 7-51 내부 오브젝트의 프로퍼티를 전달해주는 코드
+  public class OxmSqlService implements SqlService {
+	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
+	...
+	
+	// OxmSqlService의 프로퍼티를 통해 DI 받은 것을 멤버 클래스인 OxmSqlReader로 전달
+	public void setUnmarshaller(Unmarshaller unmarshaller) {
+		this.oxmSqlReader.setUnmarshaller(unmarshaller);
+	}
+	
+	public void setSqlmapFile(String sqlmapFile) {
+		this.oxmSqlReader.setSqlmapFile(sqlmapFile);
+	}
+	
+	private class OxmSqlReader implements SqlReader {
+		private Unmarshaller unmarshaller;
+		private String sqlmapFile;
+		...
+	}
+  }
+  
+  // 리스트 7-52 완성된 OxmSqlService 클래스
+  public class OxmSqlService implements SqlService {
+	private final BaseSqlService baseSqlService = new BaseSqlService();
+	
+	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
+	// oxmSqlReader와 달리 단지 디폴트 오브젝트로 만들어진 프로퍼피. 필요에 따라 DI를 통해 교체 가능
+	private SqlRegistry sqlRegistry = new HashMapSqlRegistry();
+	
+	public void setSqlRegistry(SqlRegistry sqlRegistry) {
+		this.sqlRegistry = sqlRegistry;
+	}
+	
+	public void setUnmarshaller(Unmarshaller unmarshaller) {
+		this.oxmSqlReader.setUnmarshaller(unmarshaller);
+	}
+	
+	public void setSqlmapFile(String sqlmapFile) {
+		this.oxmSqlReader.setSqlmapFile(sqlmapFile);
+	}
+
+	@PostConstruct
+	public void loadSql() {
+		this.oxmSqlReader.read(this.sqlRegistry);
+	}
+
+	public String getSql(String key) throws SqlRetrievalFailureException {
+		try { return this.sqlRegistry.findSql(key); }
+		catch(SqlNotFoundException e) { throw new SqlRetrievalFailureException(e); }
+	}
+	
+	private class OxmSqlReader implements SqlReader {
+		private Unmarshaller unmarshaller;
+		private final static String DEFAULT_SQLMAP_FILE = "sqlmap.xml";
+		private String sqlmapFile = DEFAULT_SQLMAP_FILE;
+
+		public void setUnmarshaller(Unmarshaller unmarshaller) {
+			this.unmarshaller = unmarshaller;
+		}
+
+		public void setSqlmapFile(String sqlmapFile) {
+			this.sqlmapFile = sqlmapFile;
+		}
+
+		public void read(SqlRegistry sqlRegistry) {
+			try {
+				Source source = new StreamSource(UserDao.class.getResourceAsStream(this.sqlmapFile));
+				// OxmSqlService를 통해 전달받은 OXM 인터페이스 구현 오브젝트를 가지고 언마샬링 수행
+				Sqlmap sqlmap = (Sqlmap)this.unmarshaller.unmarshal(source);
+				
+				for(SqlType sql : sqlmap.getSql()) {
+					sqlRegistry.registerSql(sql.getKey(), sql.getValue());
+				}
+			} catch (IOException e) {
+				throw new IllegalArgumentException(this.sqlmapFile + "을 가져올 수 없습니다.", e);
+			}
+		}
+	}
+  }
+  
+  // 리스트 7-53 OXM을 적용한 SqlService 설정
+  <bean id="sqlService" name="springbook.user.sqlservice.OxmSqlService">
+  	<property name="unmarshaller" ref="unmarshaller" />
+  </bean>
+  
+  <bean id="unmarshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">
+  	<property name="contextPath" value="springbook.user.sqlservice.jaxb" />
+  </bean>
+  ```
+
+* 위임을 이용한 BaseSqlService의 재사용
