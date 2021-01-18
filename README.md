@@ -1033,3 +1033,152 @@ public interface Unmarshaller {
   ```
 
 * 위임을 이용한 BaseSqlService의 재사용
+  * `loadSql()`, `getSql()`이라는 SqlService의 핵심 메서드 구현코드가 BaseSqlService와 동일
+  * 프로퍼티 설정을 통한 초기화 작업을 제외하면 두 가지 작업의 코드는 BaseSqlService, OxmSqlService 양쪽에 중복됨.
+  * `loadSql()`, `getSql()`의 구현 로직은 BaseSqlService에 두고 OxmSqlService는 일종의 설정과 기본 구성을
+  <br>변경해주기 위한 어댑터 개념으로 BaseSqlService 앞에 두는 설계가 가능
+  * 위임을 위해서는 2개의 빈을 등록하고 클라이언트의 요청을 받는 빈이 주요 내용을 뒤의 빈에 전달하는 구조로 설계
+  * OxmSqlService는 OXM 기술에 특화된 SqlReader를 멤버로 내장, 필요한 설정을 한 번에 지정할 수 있는 확장구조만을 갖고 있음.
+  * 실제 SqlReader와 SqlService를 이용해 SqlService의 기능을 구현하는 일은 내부에 BaseSqlService를 만들어서 위임.
+```java
+// 리스트 7-54 BaseSqlService로의 위임을 적용한 OxmSqlService
+public class OxmSqlService implements SqlService {
+	// SqlService의 실제 구현 부분을 위임할 대상인 BaseSqlService를 인스턴스 변수로 정의
+	private final BaseSqlService baseSqlService = new BaseSqlService();
+	...
+
+	// OxmSqlService의 프로퍼티를 통해서 초기화된 SqlReader와 SqlRegistry를
+	// 실제 작업을 위임할 대상인 baseSqlService에 주입
+	@PostConstruct
+	public void loadSql() {
+		this.baseSqlService.setSqlReader(this.oxmSqlReader);
+		this.baseSqlService.setSqlRegistry(this.sqlRegistry);
+		
+		// SQL을 등록하는 초기화 작업을 baseSqlService에 위임
+		this.baseSqlService.loadSql();
+	}
+	
+	// SQL을 찾아오는 작업도 baseSqlService에 위임
+	public String getSql(String key) throws SqlRetrievalFailureException {
+		return this.baseSqlService.getSql(key);
+	}
+	...
+}
+```
+
+
+### 7.3.3 리소스 추상화
+
+* OxmSqlReader, XmlSqlReader의 공통적인 문제
+<br>SQL 매핑 정보가 담긴 XML 파일 이름을 프로퍼티로 외부에서 지정은 가능하지만 클래스패스에 존재하는 파일로 제한됨.
+
+* 리소스
+  * 스프링은 자바에 존재하는 일관성 없는 리소스 접근 API를 추상화함.
+  <br>-> `Resource`라는 추상화 인터페이스를 정의
+  ```java
+  // 리스트 7-55 Resource 인터페이스
+  package org.springframework.core.io;
+  ...
+  public interface Resource extends InputStreamSource {
+  	// 리소스의 존재, 읽기 가능여부, 입력 스트림이 열려있는지를 확인 가능
+	boolean exists();
+	boolean isReadable();
+	boolean isOpen();
+	
+	// JDK의 URL, URI, File 형태로 전환 가능한 리소스에 사용
+	URL getURL() throws IOException;
+	URI getURI() throws IOException;
+	File getFile() throws IOException;
+	
+	Resource createRelative(String relativePath) throws IOException;
+	
+	// 리소스에 대한 이름과 부가적인 정보를 제공
+	long lastModified() throws IOException;
+	String getFilename();
+	String getDescription();
+  }
+  ```
+  * 다른 서비스 추상화 오브젝트와는 달리 **Resource는 스프링에서 빈이 아니라 값으로 취급됨.**
+  * OXM이나 트랜잭션처럼 서비스를 제공해주는 것이 아닌 단순한 정보를 가진 값으로 지정됨.
+
+* 리소스 로더
+  * 리소스의 종류와 위치를 정의한 문자열을 실제 Resource 타입 오브젝트로 변환해주는 `ResourceLoader`를 제공
+  ```java
+  // 리스트 7-56 ResourceLoader 인터페이스
+  package org.springframework.core.io;
+  
+  public interface ResourceLoader {
+  	Resource getResource(String location); // location에 담긴 스트링 정보를 적절한 Resource로 변환
+	...
+  }
+  ```
+  * 접두어가 없는 경우 리소스 로더의 구현 방식에 따라 리소스를 가져오는 방식이 달라짐.
+  * 접두어를 붙여주면 리소스 로더의 종류와 상관없이 접두어가 의미하는 위치와 방법을 이용해 리소스를 읽어옴.
+  |접두어|예|설명|
+  |-|-|-|
+  |file:|`file:/C:/temp/file.txt`|파일 시스템의 C:temp 폴더에 있는 file.txt를 리소스로 생성|
+  |classpath:|`classpath:file.txt`|클래스패스의 루트에 존재하는 file.txt 리소스에 접근|
+  |없음|`WEB-INF/test.dat`|접두어가 없는 경우 ResourceLoader 구현에 따라 리소스의 위치가 결정됨|
+  |http:|`http://www.myserver.com/test.dat`|HTTP 프로토콜을 사용해 접근할 수 있는 웹상의 리소스를 지정
+  * ResourceLoader의 대표적인 예 -> **스프링의 애플리케이션 컨텍스트**
+  <br>Application Context는 ResourceLoader 인터페이스를 상속
+  * 스프링이 제공하는 빈으로 등록 가능한 클래스에 파일을 지정해주는 프로퍼티가 존재한다면 거의 모두 Resource 타입
+
+* Resource를 이용해 XML 파일 가져오기
+  * Resource 타입은 소스와 무관하게 `getInputStream()` 메서드를 이용해 스트림으로 가져올 수 있음.
+  ```java
+  public class OxmSqlService implements SqlService {
+  	// 이름과 타입을 모두 변경하여 유연성 확보
+	public void setSqlmap(Resource sqlmap) {
+		this.oxmSqlReader.setSqlmap(sqlmap);
+	}
+	...
+	private class OxmSqlReader implements SqlReader {
+		// SQL 매핑정보 소스의 타입을 Resource로 변경
+		// Resource 구현 클래스인 ClassPathResource를 사용
+		private Resource sqlmap = new ClassPathResource("sqlmap.xml", UserDao.class);
+
+		public void setSqlmap(Resource sqlmap) {
+			this.sqlmap = sqlmap;
+		}
+
+		public void read(SqlRegistry sqlRegistry) {
+			try {
+				// 리소스의 종류에 상관없이 getInputStream()으로 가져올 수 있음
+				Source source = new StreamSource(sqlmap.getInputStream());
+				...
+			} catch (IOException e) {
+				throw new IllegalArgumentException(this.sqlmap.getFilename() + " Read Error", e);
+			}
+		}
+		...
+	}
+  }
+  ```
+  * Resource를 사용할 때는 **Reousrce 오브젝트가 실제 리소스는 아니라는 점을 주의**
+  <br>-> Resource는 리소스에 접근할 수 있는 추상화된 핸들러
+  * 코드에서 클래스패스 리소스를 바로 지정하고 싶다면 `ClassPathResource`를 사용해 오브젝트를 생성
+  * 문자열로 지정할 때는 클래스 로더가 인식할 수 있는 문자열로 표현
+  ```java
+  // 리스트 7-58 classpath: 접두어를 이용해 지정한 리소스
+  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" /> 
+	<property name="sqlmap" value="classpath:/springbook/user/dao/sqlmap.xml" />
+  </bean>
+  
+  // 리스트 7-59 file: 접두어를 이용해 지정한 리소스
+  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" /> 
+	<property name="sqlmap" value="file:/opt/resources/sqlmap.xml" />
+  </bean>
+  
+  // 리스트 7-60 HTTP로 접근 가능한 리소스
+  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" /> 
+	<property name="sqlmap" value="http://www.epril.com/resources/sqlmap.xml" />
+  </bean>
+  ```
+
+
+### 7.4 인터페이스 상속을 통한 안전한 기능확장
+
