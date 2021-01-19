@@ -91,7 +91,7 @@ public class UserDaoJdbc implements UserDao {
 ```
 
 
-*** 7.1.2 SQL 제공 서비스
+### 7.1.2 SQL 제공 서비스
 
 * SQL과 DI 설정정보가 섞여있으면 보기에도 지저분하고 관리하기에도 좋지 않다.
 
