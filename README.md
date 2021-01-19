@@ -739,7 +739,7 @@ public class JaxbXmlSqlReader implements SqlReader {
   ```java
   // 리스트 7-41 생성자를 통한 디폴트 의존관계 설정
   public class DefaultSqlService extends BaseSqlService {
-  	public DefaultSqlService() {
+ 	public DefaultSqlService() {
 		// 생성자에서 디폴트 의존 오브젝트를 직접 만들어서 스스로 DI
 		setSqlReader(new JaxbXmlSqlReader());
 		setSqlRegistry(new HashMapSqlRegistry());
@@ -824,7 +824,7 @@ import javax.xml.transform.Source;
 public interface Unmarshaller {
 	// 해당 클래스로 언마샬이 가능한지 확인해줌. 별로 사용할 일 없음.
 	boolean supports(Class<?> class);
-	
+
 	// source를 통해 제공받은 XML을 자바오브젝트 트리로 변환해서 그 루트 오브젝트를 돌려줌.
 	// 매핑 실패 시 추상화된 예외를 던진다. 서브클래스에 좀 더 세분화되어 있음.
 	Object unmarshal(Source source) throws IOException, XmlMappingException;
@@ -838,13 +838,13 @@ public interface Unmarshaller {
   // 리스트 7-46 JAXB용 Unmarshaller 빈 설정
   <?xml version="1.0" encoding="UTF-8"?>
   <beans xmlns="http://www.springframework.org/schema/beans"
-  	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans
 		http://www.springframework.org/schema/beans/spring-beans-2.0.xsd">
 
 	<bean id="unmarshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">
 		<property name="contextPath" value="springbook.user.sqlservice.jaxb" />
-  	</bean>
+	</bean>
   </beans>
   ```
   * 추상 인터페이스인 Unmarshaller의 `unmarshal()` 메서드를 호출하면 Jaxb2Marshaller 빈이 알아서 작업 수행
@@ -857,7 +857,7 @@ public interface Unmarshaller {
   @RunWith(SpringJUnit4ClassRunner.class)
   @ContextConfiguration
   public class OxmTest {
-	@Autowired
+  	@Autowired
 	Unmarshaller unmarshaller;
 	
 	@Test
@@ -926,7 +926,7 @@ public interface Unmarshaller {
   package springbook.user.sqlservice;
   ...
   public class OxmSqlService implements SqlService {
-	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
+  	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
 	...
 	
 	// private 멤버 클래스로 정의해서 톱레벨 클래스인 OxmSqlService만 사용 가능하도록
@@ -965,7 +965,7 @@ public interface Unmarshaller {
   
   // 리스트 7-52 완성된 OxmSqlService 클래스
   public class OxmSqlService implements SqlService {
-	private final BaseSqlService baseSqlService = new BaseSqlService();
+  	private final BaseSqlService baseSqlService = new BaseSqlService();
 	
 	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
 	// oxmSqlReader와 달리 단지 디폴트 오브젝트로 만들어진 프로퍼피. 필요에 따라 DI를 통해 교체 가능
