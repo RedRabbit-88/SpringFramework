@@ -686,8 +686,7 @@ public class BaseSqlService implements SqlService {
 	public String getSql(String key) throws SqlRetrievalFailureException {
 		try {
 			return this.sqlRegistry.findSql(key);
-		} 
-		catch(SqlNotFoundException e) {
+		} catch(SqlNotFoundException e) {
 			throw new SqlRetrievalFailureException(e);
 		}
 	}
@@ -857,7 +856,7 @@ public interface Unmarshaller {
   @RunWith(SpringJUnit4ClassRunner.class)
   @ContextConfiguration
   public class OxmTest {
-  	@Autowired
+	@Autowired
 	Unmarshaller unmarshaller;
 	
 	@Test
@@ -965,7 +964,7 @@ public interface Unmarshaller {
   
   // 리스트 7-52 완성된 OxmSqlService 클래스
   public class OxmSqlService implements SqlService {
-  	private final BaseSqlService baseSqlService = new BaseSqlService();
+	private final BaseSqlService baseSqlService = new BaseSqlService();
 	
 	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
 	// oxmSqlReader와 달리 단지 디폴트 오브젝트로 만들어진 프로퍼피. 필요에 따라 DI를 통해 교체 가능
@@ -1075,11 +1074,13 @@ public class OxmSqlService implements SqlService {
 * 리소스
   * 스프링은 자바에 존재하는 일관성 없는 리소스 접근 API를 추상화함.
   <br>-> `Resource`라는 추상화 인터페이스를 정의
-  ```java
-  // 리스트 7-55 Resource 인터페이스
-  package org.springframework.core.io;
-  ...
-  public interface Resource extends InputStreamSource {
+  * 다른 서비스 추상화 오브젝트와는 달리 **Resource는 스프링에서 빈이 아니라 값으로 취급됨.**
+  * OXM이나 트랜잭션처럼 서비스를 제공해주는 것이 아닌 단순한 정보를 가진 값으로 지정됨.
+```java
+// 리스트 7-55 Resource 인터페이스
+package org.springframework.core.io;
+...
+public interface Resource extends InputStreamSource {
   	// 리소스의 존재, 읽기 가능여부, 입력 스트림이 열려있는지를 확인 가능
 	boolean exists();
 	boolean isReadable();
@@ -1096,22 +1097,11 @@ public class OxmSqlService implements SqlService {
 	long lastModified() throws IOException;
 	String getFilename();
 	String getDescription();
-  }
-  ```
-  * 다른 서비스 추상화 오브젝트와는 달리 **Resource는 스프링에서 빈이 아니라 값으로 취급됨.**
-  * OXM이나 트랜잭션처럼 서비스를 제공해주는 것이 아닌 단순한 정보를 가진 값으로 지정됨.
+}
+```
 
 * 리소스 로더
   * 리소스의 종류와 위치를 정의한 문자열을 실제 Resource 타입 오브젝트로 변환해주는 `ResourceLoader`를 제공
-  ```java
-  // 리스트 7-56 ResourceLoader 인터페이스
-  package org.springframework.core.io;
-  
-  public interface ResourceLoader {
-  	Resource getResource(String location); // location에 담긴 스트링 정보를 적절한 Resource로 변환
-	...
-  }
-  ```
   * 접두어가 없는 경우 리소스 로더의 구현 방식에 따라 리소스를 가져오는 방식이 달라짐.
   * 접두어를 붙여주면 리소스 로더의 종류와 상관없이 접두어가 의미하는 위치와 방법을 이용해 리소스를 읽어옴.
   |접두어|예|설명|
@@ -1123,11 +1113,24 @@ public class OxmSqlService implements SqlService {
   * ResourceLoader의 대표적인 예 -> **스프링의 애플리케이션 컨텍스트**
   <br>Application Context는 ResourceLoader 인터페이스를 상속
   * 스프링이 제공하는 빈으로 등록 가능한 클래스에 파일을 지정해주는 프로퍼티가 존재한다면 거의 모두 Resource 타입
+```java
+// 리스트 7-56 ResourceLoader 인터페이스
+package org.springframework.core.io;
+  
+public interface ResourceLoader {
+  	Resource getResource(String location); // location에 담긴 스트링 정보를 적절한 Resource로 변환
+	...
+}
+```
 
 * Resource를 이용해 XML 파일 가져오기
   * Resource 타입은 소스와 무관하게 `getInputStream()` 메서드를 이용해 스트림으로 가져올 수 있음.
-  ```java
-  public class OxmSqlService implements SqlService {
+  * Resource를 사용할 때는 **Reousrce 오브젝트가 실제 리소스는 아니라는 점을 주의**
+  <br>-> Resource는 리소스에 접근할 수 있는 추상화된 핸들러
+  * 코드에서 클래스패스 리소스를 바로 지정하고 싶다면 `ClassPathResource`를 사용해 오브젝트를 생성
+  * 문자열로 지정할 때는 클래스 로더가 인식할 수 있는 문자열로 표현
+```java
+public class OxmSqlService implements SqlService {
   	// 이름과 타입을 모두 변경하여 유연성 확보
 	public void setSqlmap(Resource sqlmap) {
 		this.oxmSqlReader.setSqlmap(sqlmap);
@@ -1153,31 +1156,26 @@ public class OxmSqlService implements SqlService {
 		}
 		...
 	}
-  }
-  ```
-  * Resource를 사용할 때는 **Reousrce 오브젝트가 실제 리소스는 아니라는 점을 주의**
-  <br>-> Resource는 리소스에 접근할 수 있는 추상화된 핸들러
-  * 코드에서 클래스패스 리소스를 바로 지정하고 싶다면 `ClassPathResource`를 사용해 오브젝트를 생성
-  * 문자열로 지정할 때는 클래스 로더가 인식할 수 있는 문자열로 표현
-  ```java
-  // 리스트 7-58 classpath: 접두어를 이용해 지정한 리소스
-  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+}
+
+// 리스트 7-58 classpath: 접두어를 이용해 지정한 리소스
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
 	<property name="unmarshaller" ref="unmarshaller" /> 
 	<property name="sqlmap" value="classpath:/springbook/user/dao/sqlmap.xml" />
-  </bean>
+</bean>
   
-  // 리스트 7-59 file: 접두어를 이용해 지정한 리소스
-  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+// 리스트 7-59 file: 접두어를 이용해 지정한 리소스
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
 	<property name="unmarshaller" ref="unmarshaller" /> 
 	<property name="sqlmap" value="file:/opt/resources/sqlmap.xml" />
-  </bean>
+</bean>
   
-  // 리스트 7-60 HTTP로 접근 가능한 리소스
-  <bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+// 리스트 7-60 HTTP로 접근 가능한 리소스
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
 	<property name="unmarshaller" ref="unmarshaller" /> 
 	<property name="sqlmap" value="http://www.epril.com/resources/sqlmap.xml" />
-  </bean>
-  ```
+</bean>
+```
 
 
 ### 7.4 인터페이스 상속을 통한 안전한 기능확장
