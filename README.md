@@ -1180,3 +1180,168 @@ public class OxmSqlService implements SqlService {
 
 ### 7.4 인터페이스 상속을 통한 안전한 기능확장
 
+* 현재까지 만든 SqlService 클래스들은 초기에 리소스에서 SQL 정보를 읽어오고 이를 메모리에 두고 사용
+<br>-> SQL 매핑파일 정보를 변경한다고 해도 메모리상의 SQL 정보가 갱신되지 않음!
+<br>-> 변경내용을 반영하려면 서버를 재시작하거나 애플리케이션을 리로딩해야 함.
+
+
+### 7.4.1 DI와 기능의 확장
+
+* DI를 의식하는 설계가 중요
+  * 인터페이스를 활용해서 단일 책임 원칙을 적용했기에 소스 수정 및 확장이 용이
+  * 스프링 DI는 사용할 오브젝트를 직접 만드는 대신 프로퍼티로 정의하고 XML 빈 설정을 이용해서 주입하는 것
+  * DI를 적용하려면 최소 2개 이상의 의존관계를 갖는 오브젝트가 필요
+  <br>-> 의존 오브젝트는 자유롭게 확장될 수 있다는 점을 염두에 둬야 함
+
+* DI와 인터페이스 프로그래밍
+  * DI를 적용할 때는 가능한 한 인터페이스를 사용하게 해야 함.
+  * 첫 번째 이유는 다형성을 통해 하나의 인터페이스를 여러 개로 구현할 수 있기 때문
+  * 두 번째 이유는 인터페이스 분리 원칙을 통해 클라이언트와 의존 오브젝트 사이의 관계를 명확하게 해줄 수 있기 때문
+  * **인터페이스 분리 원칙 (Interface Segregation Principle)**
+  <br>오브젝트가 그 자체로 충분히 응집도가 높은 작은 단위로 설계됐더라도, **목적과 관심이 각기 다른 클라이언트가 있다면 인터페이스를 통해 적절히 분리**
+
+
+### 7.4.2 인터페이스 상속
+
+* 하나의 오브젝트가 구현하는 인터페이스를 여러 개 만들어서 구분하는 이유?
+<br>-> 오브젝트의 기능이 발전하는 과정에서 다른 종류의 클라이언트가 등장하기 때문
+
+* 인터페이스 분리 원칙이 주는 장점
+  * 모든 클라이언트가 자신의 관심에 따른 접근 방식을 불필요한 간섭 없이 유지 가능
+  * 기존 클라이언트에 영향을 주지 않은 채로 오브젝트의 기능을 확장하거나 수정 가능
+
+* SQL 수정 기능을 추가하기 위해 SqlRegistry를 상속받는 인터페이스를 구성
+  * 기존의 BaseSqlService는 신규 생성한 인터페이스를 사용할 필요 없이 기존의 SqlRegistry를 사용하면 됨.
+  * SQL 업데이트 작업이 필요한 새로운 클라이언트만 신규 인터페이스를 사용
+```java
+// 리스트 7-62 SQL 수정 기능을 가진 확장 인터페이스
+package springbook.issuetracker.sqlservice;
+...
+public interface UpdatableSqlRegistry extends SqlRegistry {
+	public void updateSql(String key, String sql) throws SqlUpdateFailureException;
+	
+	public void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException;
+}
+
+// 리스트 7-63 MyUpdatableSqlRegistry의 의존관계
+<bean id="sqlService" class="springbook.user.sqlservice.BaseSqlService">
+	...
+	<property name="sqlRegistry" ref="sqlRegistry" />
+</bean>
+
+<bean id="sqlRegistry" class="springbook.user.sqlservice.MyUpdatableSqlRegistry" />
+
+<bean id="sqlAdminService" class="springbook.user.sqlservice.SqlAdminService">
+	...
+	<property name="updatableSqlRegistry" ref="sqlRegistry" />
+</bean>
+```
+
+
+### 7.5 DI를 이용해 다양한 구현 방법 적용하기
+
+
+### 7.5.1 ConcurrentHashMap을 이용한 수정 가능 SQL 레지스트리
+
+* 운영 중인 시스템에서 사용 중인 정보를 실시간으로 변경할 때는 *동시성 문제가 가장 먼저 고려되어야 함.*
+
+* HashMapRegistry는 JDK의 HashMap을 사용
+  * 멀티스레드 환경에서 안전하지 않음.
+  * 멀티스레드 환경에서 안전하게 조작하려면 Collections.synchronizedMap() 등을 사용해야 하지만 부하가 큼.
+  * ConcurrentHashMap은 데이터 조작 시 전체 데이터에 대해 락을 걸지 않고 조회는 락을 아예 사용하지 않음.
+```java
+// 리스트 7-65 ConcurrentHashMap을 이용한 SQL 레지스트리 테스트
+public class ConcurrentHashMapSqlRegistryTest {
+	UpdatableSqlRegistry sqlRegistry;
+	
+	@Before
+	public void setUp() {
+		sqlRegistry = new ConcurrentHashMapSqlRegistry();
+		// 각 테스트 메서드에서 사용할 초기 SQL 정보를 미리 등록
+		sqlRegistry.registerSql("KEY1", "SQL1");
+		sqlRegistry.registerSql("KEY2", "SQL2");
+		sqlRegistry.registerSql("KEY3", "SQL3");
+	}
+	
+	@Test
+	public void find() {
+		checkFindResult("SQL1", "SQL2", "SQL3");
+	}
+
+	// 반복적으로 검증하는 부분은 별도의 메서드로 분리
+	private void checkFindResult(String expected1, String expected2, String expected3) {
+		assertThat(sqlRegistry.findSql("KEY1"), is(expected1));		
+		assertThat(sqlRegistry.findSql("KEY2"), is(expected2));		
+		assertThat(sqlRegistry.findSql("KEY3"), is(expected3));		
+	}
+	
+	// 주어진 키에 해당하는 SQL를 찾을 때 에러가 발생하는지 확인
+	@Test(expected= SqlNotFoundException.class)
+	public void unknownKey() {
+		sqlRegistry.findSql("SQL9999!@#$");
+	}
+
+	// 하나의 SQL을 변경하는 기능에 대한 테스트
+	@Test
+	public void updateSingle() {
+		sqlRegistry.updateSql("KEY2", "Modified2");		
+		checkFindResult("SQL1", "Modified2", "SQL3");
+	}
+	
+	@Test
+	public void updateMulti() {
+		Map<String, String> sqlmap = new HashMap<String, String>();
+		sqlmap.put("KEY1", "Modified1");
+		sqlmap.put("KEY3", "Modified3");
+		
+		sqlRegistry.updateSql(sqlmap);		
+		checkFindResult("Modified1", "SQL2", "Modified3");
+	}
+
+	// 존재하지 않는 키의 SQL을 변경하려고 시도할 때 에러가 발생하는지 확인
+	@Test(expected=SqlUpdateFailureException.class)
+	public void updateWithNotExistingKey() {
+		sqlRegistry.updateSql("SQL9999!@#$", "Modified2");
+	}
+}
+
+// 리스트 7-66 ConcurrentHashMap을 사용하는 SQL 레지스트리
+public class ConcurrentHashMapSqlRegistry implements UpdatableSqlRegistry {
+	private Map<String, String> sqlMap = new ConcurrentHashMap<String, String>();
+
+	public String findSql(String key) throws SqlNotFoundException {
+		String sql = sqlMap.get(key);
+		if (sql == null)  throw new SqlNotFoundException(key);
+		else return sql;
+	}
+
+	public void registerSql(String key, String sql) { sqlMap.put(key, sql);	}
+
+	public void updateSql(String key, String sql) throws SqlUpdateFailureException {
+		if (sqlMap.get(key) == null) {
+			throw new SqlUpdateFailureException(key);
+		}
+		
+		sqlMap.put(key, sql);
+	}
+
+	public void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException {
+		for(Map.Entry<String, String> entry : sqlmap.entrySet()) {
+			updateSql(entry.getKey(), entry.getValue());
+		}
+	}
+}
+
+// 리스트 7-67 ConcurentHashMapSqlRegistry를 적용한 설정
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" /> 
+	<property name="sqlRegistry" ref="sqlRegistry" /> // 디폴트로 준비된 HashMapSqlRegistry 대신 외부에 지정한 레지스트리 사용하도록 명시적으로 지정
+</bean>
+
+<bean id="sqlRegistry" class="springbook.user.sqlservice.updatable.ConcurrentHashMapSqlRegistry">
+</bean>
+```
+
+
+### 7.5.2 내장형 데이터베이스를 이용한 SQL 레지스트리 만들기
+
