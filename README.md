@@ -1516,3 +1516,106 @@ public class EmbeddedDbSqlRegistry implements UpdatableSqlRegistry {
 
 ### 7.6 스프링 3.1의 DI
 
+* 자바 코드의 메타정보를 이용하는 프로그래밍 방식이 도입됨
+  * 일반적인 자바 코드와 달리 메타 데이터로 취급되는 경우가 존재
+  * 리플렉션 API를 이용해 애노테이션의 메타정보를 조회하고 설정된 값을 가져와서 사용하는 방식
+  * 애노테이션은 프레임워크가 참조하는 메타정보로 사용되기에 IoC 방식에 적용하기 좋음
+  * 장점: XML에 비해 애노테이션은 작성할 코드의 양이 적음. 텍스트 방식이 아니기 때문에 오타 예방 가능
+  * 단점: 애노테이션은 자바 코드에 존재하므로 변경할 때마다 클래스를 컴파일해야 함.
+```java
+// XML 방식
+<x:special target="type" class="com.mycompany.myproject.MyClass" />
+
+// 애노테이션 방식
+package com.mycompany.myproject;
+
+@Special
+public class MyClass {
+	...
+}
+```
+
+* 정책과 관례를 이용한 프로그래밍이 방식이 도입됨.
+  * 코드 없이도 미리 약속한 규칙 또는 관례를 따라 프로그래밍이 동작 ex) 애노테이션
+  * 자바 코드로 모든 작업 과정을 작성할 때보다 코드의 양이 줄어듬.
+  * 단, 프로그래밍 언어나 API 외에 미리 정의된 규칙과 관례를 이해해야 함.
+  * 코드는 간결해지지만 정책을 잘못 알고 있을 경우 의도와 다른 코드가 작성될 수 있음.
+
+
+### 7.6.1 자바 코드를 이용한 빈 설정
+
+* 애노테이션과 자바 코드로 XML을 대체
+  * 스프링 테스트 컨텍스트를 사용하지 않는 UserTest 같은 단위테스트는 변경 불필요
+  * 스프링 프레임워크와 DI 정보를 사용하는 UserDaoTest, UserServiceTest는 변경 필요
+
+* `@ContextConfiguration`
+  * 스프링 테스트가 테스트용 DI 정보를 어디서 참조해야할지 지정하는 애노테이션
+  * DI 정보로 사용될 자바 클래스를 만들고 `@Configuration` 애노테이션을 지정
+```java
+// 리스트 7-82 XML 파일을 사용하는 UserDaoTest
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations="/test-applicationContext.xml")
+public class UserDaoTest {
+	...
+}
+
+// 리스트 7-85 TestApplicationContext를 테스트 컨텍스트로 사용하도록 만든 UserDaoTesti
+@Configuration
+@ImportResource("/test-applicationContext.xml")
+public class TestApplicationContext {
+}
+
+// 리스트 7-84 TestApplicationContext를 테스트 컨텍스트로 사용하도록 변경한 UserDaoTest
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes=TestApplicationContext.class)
+public class UserDaoTest {
+	...
+}
+```
+
+* `<context:annotation-config />` 삭제
+  * 해당 태그는 `@PostConstruct`를 붙인 메서드가 빈이 초기화된 후에 자동으로 실행되도록 사용
+  * 컨텍스트를 가져오는 클래스에 `@Configuration`이 있으면 삭제 가능
+  <br>-> 컨테이너가 직접 `@PostConstruction` 애노테이션을 처리하는 빈 후처리기를 등록해줌.
+
+* `<bean>` 전환
+  * `<bean>`으로 정의된 DI 정보는 `@Bean`이 붙은 애노테이션과 1:1 매핑됨.
+  * `@Bean`이 붙은 public 메서드로 변경
+  * 리턴값의 경우 빈을 주입받아서 사용하는 다른 빈이 어떤 타입으로 사용 중인지에 따라 달라짐
+```java
+// 리스트 7-87 XML을 이용한 dataSource 빈의 정의
+<bean id="dataSource" class="org.springframework.jdbc.datasource.SimpleDriverDataSource">
+	<property name="driverClass" value="com.mysql.jdbc.Driver" />
+	<property name="url" value="jdbc:mysql://localhost/springbook?characterEncoding=UTF-8" />
+	<property name="username" value="spring" />
+	<property name="password" value="book" />
+</bean>
+
+// 리스트 7-88 자바 코드로 작성한 dataSource 빈
+@Bean
+public DataSource dataSource() {
+	// 빈 메서드 내부에서는 빈의 구현 클래스에 맞는 프로퍼티 값 주입이 필요
+	SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+	
+	dataSource.setDriverClass(Driver.class); // 클래스 타입의 드라이버를 사용
+	dataSource.setUrl("jdbc:mysql://localhost/springbook?characterEncoding=UTF-8");
+	dataSource.setUsername("spring");
+	dataSource.setPassword("book");
+	
+	// 리턴은 확장성을 위해 인터페이스를 리턴함
+	return dataSource;
+}
+
+// 리스트 7-89 XML로 정의한 transactionManager 빈
+<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+	<property name="dataSource" ref="dataSource" />  
+</bean>
+
+// 리스트 7-90 자바 코드로 정의한 transactionManager 빈
+@Bean
+public PlatformTransactionManager transactionManager() {
+	DataSourceTransactionManager tm = new DataSourceTransactionManager();
+	tm.setDataSource(dataSource());
+	return tm;
+}
+```
