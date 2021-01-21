@@ -1345,3 +1345,174 @@ public class ConcurrentHashMapSqlRegistry implements UpdatableSqlRegistry {
 
 ### 7.5.2 내장형 데이터베이스를 이용한 SQL 레지스트리 만들기
 
+* 내장형 DB
+<br>애플리케이션에 내장돼서 애플리케이션과 함께 시작되고 종료되는 DB
+
+* 스프링의 내장형 DB 지원 기능
+  * 내장형 DB는 애플리케이션 내에서 DB 기동, 초기화 SQL 스크립트 등의 초기화 작업이 필요
+  * 스프링은 내장형 DB 지원 기능을 제공
+  	EmbeddedDatabase db;
+	...
+	
+	* 내장형 DB 초기화 작업은 내장형 DB 빌더를 통해 사용
+  * 애플리케이션에서 `shutdown()` 메서드를 통해 DB 종료
+	
+* 내장형 DB 빌더 학습 테스트
+  * 내장형 DB는 애플리케이션을 통해 DB가 시작될 때마다 매번 테이블을 새롭게 생성
+  <br>-> 지속적으로 사용가능한 테이블 생성 SQL 스크립트가 필요
+  * 내장형 DB 빌더 실행절차
+    1. DB 엔진을 생성하고 초기화 스크립트 실행해서 테이블, 초기 데이터 준비
+    2. DB에 접근할 수 있는 Connection을 생성하는 DataSource 오브젝트를 돌려줌
+  * DataSource를 통해 DB Connection을 가져오는 것부터 JdbcTemplate을 활용하는 등 사용방법은 일반 DB와 거의 동일
+
+* `EmbeddedDatabaseBuilder`: 스프링이 제공하는 내장형 DB 빌더
+```java
+new EmbeddedDatabaseBuilder() // 빌더 오브젝트 생성
+	.setType(내장형DB종류) // EmbeddedDatabaseType의 HSAL, DERBY, H2 중 하나 선택
+	.addScript(초기화에 사용할 DB 스크립트의 리소스) // 하나 이상 지정 가능
+	...
+	.build(); // 작업을 수행하고 오브젝트 리턴
+
+// 리스트 7-70 내장형 DB 학습 테스트
+public class EmbeddedDbTest {
+	EmbeddedDatabase db;
+	...
+	
+	@Before
+	public void setUp() {
+		db = new EmbeddedDatabaseBuilder()
+		.setType(HSQL)
+		.addScript("classpath:/springbook/learningtest/spring/embeddebddb/schema.sql")
+		.addScript("classpath:/springbook/learningtest/spring/embeddebddb/data.sql")
+		.build();
+	}
+	
+	// 매 테스트를 진행하고 DB를 종료
+	@After
+	public void tearDown() {
+		db.shutdown();
+	}
+}
+```
+
+* 내장형 DB를 이용한 SqlRegistry 만들기
+  * EmbeddedDatabaseBuilder는 직접 빈으로 등록해도 바로 사용불가
+    * 적절한 메서드를 호출해주는 초기화 코드가 필요
+    * 초기화 코드가 필요하다면 팩토리 빈으로 생성
+  * `jdbc` 태그를 통해 내장형 DB와 관련된 빈을 설정하고 등록
+```java
+// 리스트 7-71 HSQL 내장형 DB 설정 예
+<jdbc:embedded-database id="embeddedDatabase" type="HSQL">
+	<jdbc:script location="classpath:schema.sql" />
+</jdbc:embedded-database>
+```
+
+* UpdatableSqlRegistry 테스트 코드의 재사용
+  * ConcurrentHashMapSqlRegistry / EmbeddedDbSqlRegistry
+  <br>-> 둘 다 UpdatableSqlRegistry 인터페이스를 구현하며 테스트 내용이 중복됨!
+  * ConcurrentHashMapSqlRegistry 테스트 코드를 EmbeddedDbSqlRegistry가 공유하도록 변경
+  <br>-> JUnit4.x를 사용하는 테스트 클래스는 상속 구조로 생성 가능
+```java
+// 리스트 7-73 테스트 코드에서 ConcurrentHashMapSqlRegistry에 의존하는 부분
+public class ConcurrentHashMapSqlRegistryTest {
+	UpdatableSqlRegistry sqlRegistry;
+	
+	@Before
+	public void setUp() {
+		sqlRegistry = new ConcurrentHashMapSqlRegistry();
+		...
+	}
+	...
+}
+
+// 리스트 7-74 UpdatableSqlRegistry에 대한 테스트 추상 클래스
+public abstract class AbstractUpdatableSqlRegistryTest {
+	UpdatableSqlRegistry sqlRegistry;
+	
+	@Before
+	public void setUp() {
+		sqlRegistry = createUpdatableSqlRegistry();
+		...
+	}
+	
+	// 테스트 픽스쳐를 생성하는 부분만 추상 메서드로 만들어두고 서브클래스에서 구현
+	abstract protected UpdatableSqlRegistry createUpdatableSqlRegistry();
+	...
+	
+	// 다른 @Test 메서드들
+}
+
+// 리스트 7-75 변경된 ConcurrentHashMapSqlRegistryTest
+// 해당 클래스에는 @Test 메서드가 보이지 않지만 슈퍼클래스의 @Test 테스트 메서드를 모두 상속받아서 활용
+public class ConcurrentHashMapSqlRegistryTest extends AbstractUpdatableSqlRegistryTest {
+	protected UpdatableSqlRegistry createUpdatableSqlRegistry() {
+		return new ConcurrentHashMApSqlRegistry();
+	}
+}
+```
+
+* XML 설정을 통한 내장형 DB의 생성과 적용
+```java
+// 리스트 7-77 jdbc 네임스페이스 선언
+<beans xmlns="http://www.springframework.org/schema/beans"
+	...
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xsi:schemaLocation="http://www.springframework.org/schema/tx/spring-tx-3.0.xsd 
+			http://www.springframework.org/schema/jdbc...">
+
+// 리스트 7-78 내장형 DB 등록
+<jdbc:embedded-database id="embeddedDatabase" type="HSQL">
+	<jdbc:script location="classpath:springbook/user/sqlservice/updatable/sqlRegistrySchema.sql"/>
+</jdbc:embedded-database>
+
+// 리스트 7-79 EmbeddedDBSqlRegistry 클래스를 이용한 빈 등록
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" /> 
+	<property name="sqlRegistry" ref="sqlRegistry" />
+</bean>
+
+<bean id="sqlRegistry" class="springbook.user.sqlservice.updatable.EmbeddedDbSqlRegistry">
+	<property name="dataSource" ref="embeddedDatabase" />
+</bean>
+```
+
+
+### 7.5.3 트랜잭션 적용
+
+* SimpleJdbcTemplate만 사용하면 트랜잭션이 미적용됨.
+  * 트랜잭션 경계가 DAO 밖에 있고 범위가 넓은 경우는 AOP를 이용
+  * 제한된 오브젝트 내에서는 트랜잭션 추상화 API를 사용
+
+* 코드를 이용한 트랜잭션 적용
+  * PlatformTransactionManager보다 TransactionTemplate을 사용
+    * 트랜잭션을 프록시간 공유할 필요 없음
+    * 빈으로 등록되지 않고 내부적으로만 사용
+```java
+// 리스트 7-81 트랜잭션 기능을 가진 EmbeddedDBSqlRegistry
+public class EmbeddedDbSqlRegistry implements UpdatableSqlRegistry {
+	SimpleJdbcTemplate jdbc;
+	// JdbcTemplate과 트랜잭션을 동기화해주는 트랜잭션 템블릿. 멀티스레드 환경 사용 가능
+	TransactionTemplate transactionTemplate;
+	
+	public void setDataSource(DataSource dataSource) {
+		jdbc = new SimpleJdbcTemplate(dataSource);
+		transactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+		transactionTemplate.setIsolationLevel(TransactionTemplate.ISOLATION_READ_COMMITTED);
+	}
+	...
+	// 파라미터는 익명 내부 클래스로 만들어지는 콜백 오브젝트 안에서 사용하므로 final로 선언
+	public void updateSql(final Map<String, String> sqlmap) throws SqlUpdateFailureException {
+		transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+			protected void doInTransactionWithoutResult(TransactionStatus status) {
+				for(Map.Entry<String, String> entry : sqlmap.entrySet()) {
+					updateSql(entry.getKey(), entry.getValue());
+				}
+			}
+		});
+	}
+}
+```
+
+
+### 7.6 스프링 3.1의 DI
+
