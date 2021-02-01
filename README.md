@@ -499,8 +499,10 @@ public class XmlSqlService implements SqlService {
   <br>다른 책임을 가진 오브젝트와 협력해서 동작하도록 만들어야 함.
   <br>-> 변경 가능한 기능은 전략 패턴을 적용해 별도의 오브젝트로 분리
   * SqlService의 구현 클래스가 변경 가능한 책임을 가진 `SqlReader`와 `SqlRegistry` 2가지 타입의 오브젝트를 사용하게 만든다.
-    * SqlReader: SqlService에서 받은 읽기 요청을 SQL 리소스를 이용해서 처리하는 오브젝트
-    * SqlRegistry: SqlService에서 받은 SQL 등록/조회 요청을 SqlReader를 이용해서 처리하는 오브젝트
+    * **SqlReader**
+    <br>SqlService에서 받은 읽기 요청을 SQL 리소스를 이용해서 처리하는 오브젝트
+    * **SqlRegistry**
+    <br>SqlService에서 받은 SQL 등록/조회 요청을 SqlReader를 이용해서 처리하는 오브젝트
   * SqlReader가 읽어오는 SQL 정보는 다시 SqlRegistry에 전달해서 등록되게 해야 함.
   <br>-> **SqlReader에게 SqlRegistry 전략을 제공해주면서 이를 이용해 SQL 정보를 SqlRegistry에 저장하라고 요청**
   ```java
