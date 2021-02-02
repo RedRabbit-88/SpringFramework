@@ -1621,3 +1621,107 @@ public PlatformTransactionManager transactionManager() {
 	return tm;
 }
 ```
+
+* testUserService 빈 전환
+  * `parent` 정의를 이용해서 동일한 userService의 프로퍼티를 상속받음
+  <br>-> `@Bean` 메서드로 전환 시에는 userService의 빈 설정을 참고해서 프로퍼티를 모두 지정해야 함.
+  * `<bean>`으로 빈을 지정할 때는 리플렉션 API를 사용하기 때문에 private 접근제한자도 사용 가능
+  <br>-> 직접 자바 코드에서 참조할 때는 접근제한자를 public으로 지정해야 함.
+  * XML에서는 자바 코드로 작성한 빈을 `<property>`를 이용해서 참조 가능
+  <br>-> 자바 코드에서 XML에 정의된 빈을 참조하려면 `@Autowired`가 붙은 필드를 선언해서 사용
+```java
+// 7-91 XML의 빈 정의
+<bean id="userDao" class="springbook.user.dao.UserDaoJdbc">
+	<property name="dataSource" ref="dataSource" />
+	<property name="sqlService" ref="sqlService" />
+</bean>
+
+<bean id="userService" class="springbook.user.service.UserServiceImpl">
+	<property name="userDao" ref="userDao" />
+	<property name="mailSender" ref="mailSender" />
+</bean>
+
+<bean id="testUserService" class="springbook.user.service.UserServiceTest$TestUserService" parent="userService" />
+
+<bean id="mailSender" class="springbook.user.service.DummyMailSender" />
+
+// 애노테이션으로 변환한 빈 정의
+@Autowired
+SqlService sqlService; // XML에 정의된 sqlService 빈을 참조
+
+@Bean
+public UserDao userDao() {
+	UserDaoJdbc dao = new UserDaoJdbc();
+	dao.setDataSource(dataSource());
+	dao.setSqlService(this.sqlService);
+	return dao;
+}
+
+@Bean
+public UserService userService() {
+	UserServiceImpl service = new UserServiceImpl();
+	service.setUserDao(userDao());
+	service.setMailSender(mailSender());
+	return service;
+}
+
+
+@Bean
+public UserService testUserService() {
+	TestUserService testService = new TestUserService();
+	// userService와 동일하게 설정
+	testService.setUserDao(userDao());
+	testService.setMailSender(mailSender());
+	return testService;
+}
+
+@Bean
+public MailSender mailSender() {
+	return new DummyMailSender();
+}
+```
+
+* sqlService, sqlRegistry, unmarshaller 빈 전환
+  * `@Autowired`: 필드 "타입"을 기준으로 XML에서 빈을 참조해서 주입
+  * `@Resource`: 필드 "이름"을 기준으로 XML에서 빈을 참조해서 주입
+```java
+// SQL 서비스를 위한 3개의 <bean>
+<bean id="sqlService" class="springbook.user.sqlservice.OxmSqlService">
+	<property name="unmarshaller" ref="unmarshaller" />
+	<property name="sqlRegistry" ref="sqlRegistry" />
+</bean>
+
+<bean id="sqlRegistry" class="springbook.user.sqlservice.updatable.EmbeddedDbSqlRegistry">
+	<property name="dataSource" ref="embeddedDatabase" />
+</bean>
+
+<bean id="unmarshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">
+	<property name="contextPath" value="springbook.user.sqlservice.jaxb" />
+</bean>
+
+// SQL 서비스를 위한 3개의 @Bean 메서드
+@Bean
+public SqlService sqlService() {
+	OxmSqlService sqlService = new OxmSqlService();
+	sqlService.setUnmarshaller(unmarshaller());
+	sqlService.setSqlRegistry(sqlRegistry());
+	return sqlService;
+}
+
+@Resource // 필드 "이름"을 기준으로 XML에서 빈을 참조
+Database embeddedDatabase;
+
+@Bean
+public SqlRegistry sqlRegistry() {
+	EmbeddedDbSqlRegistry sqlRegistry = new EmbeddedDbSqlRegistry();
+	sqlRegistry.setDataSource(this.embeddedDatabase);
+	return sqlRegistry;
+}
+
+@Bean
+public Unmarshaller unmarshaller() {
+	Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+	marshaller.setContextPath("springbook.user.sqlservice.jaxb");
+	return marshaller;
+}
+```
