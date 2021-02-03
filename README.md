@@ -1725,3 +1725,150 @@ public Unmarshaller unmarshaller() {
 	return marshaller;
 }
 ```
+
+* `<jdbc:embedded-database>`
+  * type에 지정한 내장형 DB 생성
+  * `<jdbc:script>`로 지정한 스크립트로 초기화
+  * DataSource 타입 DB의 커넥션 오브젝트를 빈으로 등록
+* `<tx:annotation-driven />`
+  * 스프링 3.0에서는 아래 4가지 클래스를 빈으로 등록해야 했음.
+    * org.springframework.aop.framework.autoproxy.InfrastructureAdvisorAutoProxyCreator
+    * org.springframework.transaction.annotation.AnnotationTransactionAttributeSource
+    * org.springframework.transaction.interceptor.TransactionInterceptor
+    * org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor
+  * 스프링 3.1에서는 `@EnableTransactionManagement` 애노테이션을 사용
+```java
+// XML에 남은 2개의 빈
+<jdbc:embedded-database id="embeddedDatabase" type="HSQL">
+	<jdbc:script location="classpath:springbook/user/sqlservice/updatable/sqlRegistrySchema.sql" />
+</jdbc:embedded-database>
+
+<tx:annotation-driven />
+
+// 내장형 DB 빈을 생성하는 @Bean 메서드
+@Bean
+public DataSource embeddedDatabase() {
+	return new EmbeddedDatabaseBuilder()
+		.setName("embeddedDatabase")
+		.setType(HSQL)
+		.addScript("classpath:springbook/user/sqlservice/updatable/sqlRegistrySchema.sql")
+		.build();
+}
+
+// embeddedDatabase() 메서드를 사용해서 빈을 가져오도록 수정한 sqlRegistry()
+@Bean
+public SqlRegistry sqlRegistry() {
+	EmbeddedDbSqlRegistry sqlRegistry = new EmbeddedDbSqlRegistry();
+	sqlRegistry.setDataSource(embeddedDatabase()); // embeddedDatabase() 빈을 사용
+	return sqlRegistry;
+}
+```
+
+
+### 7.6.2 빈 스캐닝과 자동와이어링
+
+* `@Autowired`를 이용한 자동와이어링
+  * 스프링은 `@Autowired`가 붙은 수정자 메서드가 있으면 **파라미터 타입을 보고 주입 가능한 빈 모두 검색**
+    * 주입 가능한 타입의 빈이 하나라면 스프링이 수정제 메서드를 호출해서 넣어줌.
+    * 주입 가능한 타입의 빈이 2개 이상이면 그 중 프로퍼티와 동일한 이름의 빈을 사용
+  * 주어진 오브젝트를 그대로 필드에 저장하는 수정자 메서드라면 필드에 `@Autowired` 적용
+  * 만약 다른 오브젝트를 생성해서 저장해야 할 경우 메서드에 `@Autowired` 적용
+  * DI 관련 코드를 줄일 수 있지만 설정정보를 통해 빈들 사이의 의존관계를 파악하기가 어려움
+```java
+public class UserDaoJdbc implements UserDao {
+	// dataSource 수정자에 @Autowired 사용
+	@Autowired
+	public void setDataSource(DataSource dataSource) {
+		this.jdbcTemplate = new JdbcTemplate(dataSource);
+	}
+	
+	// sqlService 필드에 @Autowired 사용. 리플렉션 API를 이용해서 DI
+	@Autowired
+	private SqlService sqlService;
+	
+	// @Autowired 주입으로 변경된 userDao()
+	@Bean
+	public UserDao userDao() {
+		return new UserDaoJdbc();
+	}
+}
+```
+
+* `@Component`를 이용한 자동 빈 등록
+  * 클래스에 부여되는 애노테이션
+  * `@Component`가 붙은 클래스는 빈 스캐너를 통해 자동으로 빈으로 등록됨.
+  * 빈으로 등록될 후보 클래스에 붙여주는 일종의 마커(marker)
+  * 해당 애노테이션을 붙이면 프로젝트 내의 모든 클래스패스를 다 검색해서 부하가 많이 걸림
+  <br>-> `@ComponentScan`을 이용해서 스캔 범위를 지정
+  * `@ComponentScan``
+    * basePackages: 기준 패키지를 지정할 때 사용. 지정한 패키지 아래의 모든 서브패키지를 다 검색
+  * `@Component`가 붙은 클래스의 이름 대신 다른 이름을 사용하고 싶으면 애노테이션에 이름을 지정
+  <br>`@Component("userDao")`
+```java
+// @Component를 적용한 UserDaoJdbc
+@Component
+public class UserDaoJdbc implements UserDao {
+}
+
+// 어플리케이션 컨텍스트 클래스에서 userDao() 메서드 제거
+@Autowired UserDao userDao;
+
+@Bean
+public UserService userService() {
+	UserServiceImpl service = new UserServiceImpl();
+	service.setUserDao(this.userDao);
+	service.setMailSender(mailSender());
+	return service;
+}
+
+
+@Bean
+public UserService testUserService() {
+	TestUserService testService = new TestUserService();
+	testService.setUserDao(this.userDao);
+	testService.setMailSender(mailSender());
+	return testService;
+}
+
+// @ComponentScan 적용
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages="springbook.user")
+public class TestApplicationContext {
+}
+```
+
+* 메타 애노테이션
+  * 애노테이션의 정의에 부여된 애노테이션
+  * 여러 개의 애노테이션에 공통된 속성을 적용하고자 할 때 사용
+  * 애노테이션은 `@interface` 키워드를 이용해서 정의
+```java
+// @Component 메타 애노테이션을 가진 애노테이션 정의
+@Component
+public @interface SnsConnector {
+	...
+}
+
+// @SnsConnector를 부여해서 자동 빈 등록 대상으로 지정
+@SnsConnector
+public class FacebookConnector {
+}
+```
+
+* `@Repository`
+  * DAO 빈을 자동등록 대상으로 지정
+  * 스프링은 DAO 기능을 제공하는 클래스에는 해당 애노테이션을 이용하도록 권장
+```java
+@Repository
+public class UserDaoJbc implements UserDao {
+}
+```
+
+* `@Service`
+  * 비즈니스 로직을 담은 서비스 계층의 빈을 자동등록 대상으로 지정
+  * 스프링은 서비스 기능을 제공하는 클래스에는 해당 애노테이션을 이용하도록 권장
+```java
+@Service("userService")
+public class UserServiceImpl implements UserService {
+}
+```
