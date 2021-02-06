@@ -320,7 +320,7 @@ public class JaxbTest {
 ### 7.2.2 XML 파일을 이용하는 SQL 서비스
 
 * SQL 맵 XML 파일
-  * SQL을 DAO 로직의 일부라고 볼 수 있으므로 DAO와 같은 패키지에 두는 게 좋음
+  * SQL은 DAO 로직의 일부라고 볼 수 있으므로 DAO와 같은 패키지에 두는 게 좋음
 ```java
 <?xml version="1.0" encoding="UTF-8"?>
 <sqlmap xmlns="http://www.epril.com/sqlmap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
