@@ -1800,7 +1800,7 @@ public class UserDaoJdbc implements UserDao {
   * 빈으로 등록될 후보 클래스에 붙여주는 일종의 마커(marker)
   * 해당 애노테이션을 붙이면 프로젝트 내의 모든 클래스패스를 다 검색해서 부하가 많이 걸림
   <br>-> `@ComponentScan`을 이용해서 스캔 범위를 지정
-  * `@ComponentScan``
+  * `@ComponentScan`
     * basePackages: 기준 패키지를 지정할 때 사용. 지정한 패키지 아래의 모든 서브패키지를 다 검색
   * `@Component`가 붙은 클래스의 이름 대신 다른 이름을 사용하고 싶으면 애노테이션에 이름을 지정
   <br>`@Component("userDao")`
@@ -1872,3 +1872,300 @@ public class UserDaoJbc implements UserDao {
 public class UserServiceImpl implements UserService {
 }
 ```
+
+
+### 7.6.3 컨텍스트 분리와 @Import
+
+* 테스트용 컨텍스트 분리
+  * 일반적인 빈과 테스트용 빈은 따로 분리하는게 좋음
+  * DI 설정정보를 분리하려면 DI 설정 클래스를 추가하고 관련된 빈 설정 애노테이션, 필드, 메서드를 이동
+  * 테스트용 빈과 애플리케이션 빈의 설정정보를 분리했다면 스캔 대상의 위치도 분리하는 게 좋음
+  * 테스트용 빈은 설정정보에 내용이 나타나는 게 좋음
+```java
+// 분리한 테스트 DI 정보
+@Configuration
+public class TestAppContext {
+	// userDao 빈은 @Repository를 적용해서 자동으로 빈으로 등록됨
+	@Autowired UserDao userDao;
+	
+	// testUserService 빈은 userDao와 mailSender 빈에 의존
+	@Bean
+	public UserService testUserService() {
+		// TestUserService는 UserServiceImpl을 상속했으므로 자동 와이어링 대상
+		TestUserService testService = new TestUserService();
+		testService.setUserDao(this.userDao);
+		testService.setMailSender(mailSender());
+		return testService;
+	}
+	
+	@Bean
+	public MailSender mailSender() {
+		return new DummyMailSender();
+	}
+}
+
+// 자동 와이어링을 활용하도록 간략하게 바꾼 테스트 DI 정보
+@Configuration
+public class TestAppContext {
+	@Bean
+	public UserService testUserService() {
+		return new TestUserService();
+	}
+	
+	@Bean
+	public MailSender mailSender() {
+		return new DummyMailSender();
+	}
+}
+
+// 테스트 컨텍스트의 DI 설정 클래스 정보 수정
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes={TestAppContext.class, AppContext.class})
+public class UserDaoTest {
+}
+```
+
+* `@Import`
+  * SQL 서비스는 독립적인 모듈처럼 취급하는 게 좋음
+  <br>-> 다른 애플리케이션을 구성하는 빈과 달리 독립적으로 개발되거나 변경될 가능성이 높기 때문
+  * 애플리케이션이 동작할 때 반드시 필요한 정보라면, 기존의 AppContext와 연결되는 게 좋음
+  <br>-> AppContext는 메인 설정정보로, SqlServiceContext는 AppContext에 포함되는 보조 설정정보로 사용!
+```java
+// SQL 서비스 빈 설정을 위한 SqlServiceContext 클래스
+@Configuration
+public class SqlServiceContext {
+	@Bean
+	public SqlService sqlService() {
+		OxmSqlService sqlService = new OxmSqlService();
+		sqlService.setUnmarshaller(unmarshaller());
+		sqlService.setSqlRegistry(sqlRegistry());
+		return sqlService;
+	}
+
+	@Bean
+	public SqlRegistry sqlRegistry() {
+		EmbeddedDbSqlRegistry sqlRegistry = new EmbeddedDbSqlRegistry();
+		sqlRegistry.setDataSource(embeddedDatabase());
+		return sqlRegistry;
+	}
+
+	@Bean
+	public Unmarshaller unmarshaller() {
+		Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+		marshaller.setContextPath("springbook.user.sqlservice.jaxb");
+		return marshaller;
+	}
+
+	@Bean
+	public DataSource embeddedDatabase() {
+		return new EmbeddedDatabaseBuilder()
+			.setName("embeddedDatabase")
+			.setType(HSQL)
+			.addScript("classpath:springbook/user/sqlservice/updatable/sqlRegistrySchema.sql")
+			.build();
+	}
+}
+
+// @Import 적용
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages="springbook.user")
+@Import(SqlServiceContext.class) // SqlServiceContext를 보조 설정정보로 사용
+public class AppContext {
+}
+```
+
+
+### 7.6.4 프로파일
+
+* 운영용 설정정보는 테스트와 별도로 만들어서 관리가 필요
+  * 실행환경에 따라 설정정보를 각각 설정하는 건 불편
+  * 테스트 환경에서는 AppContext, TestAppContext를 적용하고 운영 환경에서는 AppContext, ProductionContext를 적용하는 식
+
+* `@Profile`과 `@ActiveProfiles`
+  * 스프링은 환경에 따라 빈 설정정보가 달라져야하는 경우 간단히 설정정보를 구성할 수 있는 방법을 제공
+  <br>-> 프로파일을 구성해 놓고 실행 시점의 어떤 프로파일의 빈 설정을 사용할지 지정
+  * 프로파일을 적용 시 하나의 설정 클래스만 이용해서 환경에 따라 다른 빈 설정 구성 가능
+  * **프로파일은 설정 클래스 단위로 지정**
+  * 프로파일이 지정되어 있지 않은 빈 설정은 default 프로파일로 취급되며 항상 적용됨.
+  * `@Profile`이 붙은 설정 클래스는 `@ActiveProfiles`에 프로파일 이름이 들어있지 않으면 무시됨.
+  <br>-> 프로파일이 일종의 필터처럼 적용됨!
+```java
+// @Profile을 지정한 TestAppContext
+@Configuration
+@Profile("test")
+public class TestAppContext { ... }
+
+
+// @Import에 모든 설정 클래스 추가
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages="springbook.user")
+@Import(SqlServiceContext.class, TestAppContext.class, ProductionAppContext.class)
+public class AppContext { ... }
+
+
+// 활성 프로파일을 지정한 UserServiceTest
+@RunWith(SprintJUnit4ClassRunner.class)
+@ActiveProfiles("test") // @Profile이 test인 컨텍스트만 적용
+@ContextConfiguration(classes=AppContext.class) // 클래스 하나만 지정해서 모든 컨텍스트를 포함 가능
+public class UserServiceTest { ... }
+```
+
+* 컨테이너의 빈 등록 정보 확인
+  * 스프링 컨테이너는 모두 BeanFactory라는 인터페이스를 구현
+  * `DefaultListableBeanFactory`: 대부분의 컨테이너들이 빈을 등록/관리할 때 사용하는 클래스
+```java
+// 등록된 빈 내역을 조회하는 테스트 메서드
+@Autowired DefaultListableBeanFactory bf;
+@Test
+public void beans() {
+	for (String n : bf.getBeanDefinitionNames()) {
+		System.out.println(n + " \t " + bf.getBean(n).getClass().getName());
+	}
+}
+```
+
+* 중첩 클래스를 이용한 프로파일 적용
+  * 파일이 많아지면 전체 구성을 알아보기가 힘듦.
+  * static 중첩 클래스를 이용해서 구조는 유지한 채 소스 코드의 위치를 통합
+```java
+// 프로파일을 적용한 AppContext 설정 클래스
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages="springbook.user")
+@Import(SqlServiceContext.class)
+public class AppContext {
+	@Bean
+	public DataSource dataSource() {
+		SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+		dataSource.setDriverClass(Driver.class);
+		dataSource.setUrl("jdbc:mysql://localhost/springbook?characterEncoding=UTF-8");
+		dataSource.setUsername("spring");
+		dataSource.setPassword("book");
+		return dataSource;
+	}
+
+	@Bean
+	public PlatformTransactionManager transactionManager() {
+		DataSourceTransactionManager tm = new DataSourceTransactionManager();
+		tm.setDataSource(dataSource());
+		return tm;
+	}
+	
+	// static 중첩 클래스로 넣은 @Configuration 클래스는 스프링이 자동으로 포함시킴.
+	// @Import에 따로 표시할 필요 없음!
+	@Configuration
+	@Profile("production")
+	public static class ProductionAppContext {
+		@Bean
+		public MailSender mailSender() {
+			JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+			mailSender.setHost("localhost");
+			return mailSender;
+		}
+	}
+	
+	@Configuration
+	@Profile("test")
+	public static class TestAppContext {
+		@Bean
+		public UserService testUserService() {
+			return new TestUserService();
+		}
+		
+		@Bean
+		public MailSender mailSender() {
+			return new DummyMailSender();
+		}
+	}
+}
+```
+
+
+### 7.6.5 프로퍼티 소스
+
+* AppContext에 있는 테스트 환경에 종속되는 dataSource의 DB 연결정보를 분리할 필요가 있음
+<br>-> 별도 프로퍼티 소스에 DB 연결정보를 저장!
+
+* `@PropertySource`
+  * 사용할 프로퍼티 등록을 위한 애노테이션. 프로퍼티 소스에 등록된 정보를 가져옴
+  * 프로퍼티에 들어갈 DB 연결정보는 텍스트로 된 이름과 값의 쌍으로 구성
+  * `@PropertySource`로 등록한 리소스로부터 가져오는 프로퍼티 값은 `Environment` 타입의 오브젝트에 저장됨.
+  <br>-> `getProperty()` 메서드를 이용해서 프로퍼티값 조회 가능
+```java
+// database.properties 파일
+db.driverClass=com.mysql.jdbc.Driver
+db.url=jdbc:mysql://localhost/springbook?characterEncoding=UTF-8
+db.username=spring
+db.password=book
+
+
+// 환경 오브젝트로부터 프로퍼티 값을 가져오도록 수정한 dataSource() 메서드
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages="springbook.user")
+@Import(SqlServiceContext.class)
+@PropertySource("/database.properties")
+public class AppContext {
+	...
+	@Autowired Environment env;
+	
+	@Bean
+	public DataSource dataSource() {
+		SimpleDriverDataSource ds = new SimpleDriverDataSource();
+		
+		try {
+			ds.setDriverClass((Class<? extends java.sql.Driver>)
+				Class.forName(env.getProperty("db.driverClass")));
+		} catch (ClassNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+		ds.setUrl(env.getProperty("db.url"));
+		ds.setUserName(env.getProperty("db.username"));
+		ds.setPassword(env.getProperty("db.password"));
+		
+		return ds;
+	}
+}
+```
+
+* `PropertySourcesPlaceholderConfigurer`
+  * Environment 오브젝트 대신 프로퍼티 값을 직접 DI 받을 때 사용
+  * `@Value`를 통해 값을 주입하는 방식으로 적용
+  * PropertySourcesPlaceholderConfigurer는 프로퍼티 소스로부터 가져온 값을 `@Value` 필드에 주입하는 기능을 제공
+```java
+// @Value를 이용한 프로퍼티 값 주입
+@PropertySource("/database.properties")
+public class AppContext {
+	@Value("${db.driverClass}") Class<? extends Driver> driverClass;
+	@Value("${db.url}") String url;
+	@Value("${db.username}") String username;
+	@Value("${db.password}") String password;
+}
+
+
+// 프로퍼티 소스를 이용한 치환자 설정용 빈
+// 반드시 static으로 선언해야 함!
+@Bean
+public static PropertySourcesPlaceholderConfigurer placeholderConfigurer() {
+	return new PropertySourcesPlaceholderConfigurer();
+}
+
+
+// @Value 필드를 사용하도록 수정한 dataSource() 메서드
+@Bean
+public DataSource dataSource() {
+	SimpleDriverDataSource ds = new SimpleDriverDataSource();
+	ds.setDriverClass(this.driverClass);
+	ds.setUrl(this.url);
+	ds.setUsername(this.username);
+	ds.setPassword(this.password);
+	
+	return ds;
+}
+```
+
+
+### 빈 설정의 재사용과 @Enable*
+
