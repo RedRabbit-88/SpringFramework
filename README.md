@@ -100,7 +100,7 @@ public class UserDaoJdbc implements UserDao {
 
 * SQL 서비스 인터페이스
   * 가장 먼저 할 일은 SQL 서비스의 인터페이스를 설계하는 것
-  * SQL에 대한 키 값을 전달하면 그에 해당하는 SQL을 돌려주게 설계
+  * SQL에 대한 키 값을 전달하면 그에 해당하는 SQL을 돌려주도록 설계
 ```java
 // 리스트 7-7 SqlService 인터페이스
 package springbook.user.sqlservice;
