@@ -813,7 +813,7 @@ public class JaxbXmlSqlReader implements SqlReader {
 
 * OXM 서비스 인터페이스
   * Unmarshaller 인터페이스
-    * SqlReader를 대체하는 인터페이스
+    * **SqlReader를 대체하는 인터페이스**
     * XML 파일에 대한 정보를 담은 Source 타입의 오브젝트를 받아
     <br>설정에서 지정한 OXM 기술을 이용해 자바오브젝트 트리로 변환하고 루트 오브젝트를 돌려줌
 ```java
