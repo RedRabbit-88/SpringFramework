@@ -1400,8 +1400,7 @@ public class EmbeddedDbTest {
 
 * 내장형 DB를 이용한 SqlRegistry 만들기
   * EmbeddedDatabaseBuilder는 직접 빈으로 등록해도 바로 사용불가
-    * 적절한 메서드를 호출해주는 초기화 코드가 필요
-    * 초기화 코드가 필요하다면 팩토리 빈으로 생성
+    * 적절한 메서드를 호출해주는 초기화 코드가 필요 -> 팩토리 빈으로 생성!
   * `jdbc` 태그를 통해 내장형 DB와 관련된 빈을 설정하고 등록
 ```java
 // 리스트 7-71 HSQL 내장형 DB 설정 예
