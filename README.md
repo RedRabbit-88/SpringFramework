@@ -2167,5 +2167,115 @@ public DataSource dataSource() {
 ```
 
 
-### 빈 설정의 재사용과 @Enable*
+### 7.6.6 빈 설정의 재사용과 @Enable*
 
+* 빈 설정자
+  * SQL 서비스를 재사용 가능한 독립적인 모듈로 만들어야 향후 확장이 가능
+  * SqlServiceContext에서 SQL 매핑파일의 위치를 지정하는 작업을 분리
+  * `@Configuration` 애노테이션이 달린, 빈 설정으로 사용되는 AppContext 같은 클래스도 스프링에서는 하나의 빈
+  * `@Configuration`은 `@Component`를 메타 애노테이션으로 갖고 있는 자동 빈 등록용 애노테이션
+```java
+// SqlMapConfig 인터페이스
+import org.springframework.core.io.Resource;
+public interface SqlMapConfig {
+	Resource getSqlMapResource();
+}
+
+
+// SqlMapConfig 인터페이스를 구현한 클래스
+public class UserSqlMapConfig implements SqlMapConfig {
+	@Override
+	public Resource getSqlMapResource() {
+		return new ClassPathResource("sqlmap.xml", UserDao.class);
+	}
+}
+
+
+// SqlMapConfig 타입 빈에 의존하게 만든 SqlServiceContext
+@Configuration
+public class SqlServiceContext {
+	@Autowired SqlMapConfig sqlMapConfig;
+	
+	@Bean
+	public SqlService sqlService() {
+		OxmSqlService sqlService = new OxmSqlService();
+		sqlService.setUnmarshaller(unmarshaller());
+		sqlService.setSqlRegistry(sqlRegistry());
+		sqlService.setSqlmap(this.sqlMapConfig.getSqlMapResource()); // SqlMapConfig 타입 빈에 의존
+		return sqlService;
+	}
+	...
+}
+
+
+// sqlMapConfig 빈 설정
+public class AppContext {
+	...
+	
+	// sqlMapConfig 빈은 SqlConfigService 빈에 @Autowired를 통해 주입돼서 사용됨.
+	@Bean
+	public SqlMapConfig sqlMapConfig() {
+		return new UserSqlMapConfig();
+	}
+}
+
+
+// SqlMapConfig를 구현하게 만든 AppContext
+// sqlMapConfig() 메서드는 제거
+public class AppContext implements SqlMapConfig {
+	...
+	
+	@Override
+	public Resource getSqlMapResource() {
+		return new ClassPathResource("sqlmap.xml", UserDao.class);
+	}
+}
+```
+
+
+* @Enable* 애노테이션
+  * SqlServiceContext는 이제 SqlService 라이브러리 모듈에 포함돼서 재사용이 가능
+  * SqlService가 필요한 애플리케이션은 아래 작업 진행
+    * 메인 설정 클래스에서 `@Import`로 SqlServiceContext 빈 설정을 추가
+    * SqlMapConfig를 구현해 SQL 매핑 파일의 위치를 지정
+  * `@Component`를 `@Repository`, `@Service`처럼 의미있는 애노테이션으로 만들어서 사용했듯이
+  <br>`@Import`도 @Enable* 애노테이션으로 만들어서 사용 가능
+```java
+// @Import를 메타 애노테이션으로 넣은 애노테이션 정의
+@Import(value=SqlServiceContext.class)
+public @interface EnableSqlService {
+}
+
+
+// @EnableSqlService 적용
+@Configuration
+@ComponentScan(basePackages="springbook.user")
+@EnableTransactionManagement
+@EnableSqlService // SqlService를 사용하겠다는 의미
+@PropertySource("/database.properties")
+public class AppContext implements SqlMapConfig { ... }
+```
+
+
+### 7.7 정리
+
+* SQL처럼 변경될 수 있는 텍스트로 된 정보는 **외부 리소스에 만들고 가져오게 구성**
+
+* 성격이 다른 코드가 섞여 있는 클래스는 코드를 인터페이스로 분리할 것
+<br>다른 인터페이스에 속한 기능은 인터페이스를 통해 접근하고, 간단히 **자기참조 빈으로 의존관계를 만들어 검증**
+
+* 자주 사용되는 의존 오브젝트는 디폴트로 미리 정의할 것
+
+* XML과 오브젝트 매핑은 스프링의 **OXM 추상화 기능**을 활용
+
+* 특정 의존 오브젝트를 고정시켜 기능을 특화하려면 멤버 클래스로 구성
+
+* 외부의 파일이나 리소스를 사용하는 코드에서는 스프링의 **리소스 추상화**와 **리소스 로더**를 사용
+
+* DI를 의식하면서 코드를 작성하면 객체지향 설계에 도움이 됨.
+
+* DI에는 인터페이스를 사용해서 인터페이스 분리 원칙을 준수할 것
+
+* 클라이언트에 따라 인터페이스를 분리 시, 신규 인터페이스 생성 혹은 인터페이스 상속으로 설계
+
+* 애플리케이션에 내장 DB를 사용 시에는 스프링의 내장형 DB 추상화 기능과 전용 태그를 사용
