@@ -1106,6 +1106,7 @@ public interface Resource extends InputStreamSource {
   * 리소스의 종류와 위치를 정의한 문자열을 실제 Resource 타입 오브젝트로 변환해주는 `ResourceLoader`를 제공
   * 접두어가 없는 경우 리소스 로더의 구현 방식에 따라 리소스를 가져오는 방식이 달라짐.
   * 접두어를 붙여주면 리소스 로더의 종류와 상관없이 접두어가 의미하는 위치와 방법을 이용해 리소스를 읽어옴.
+  
   |접두어|예|설명|
   |-|-|-|
   |file:|`file:/C:/temp/file.txt`|파일 시스템의 C:temp 폴더에 있는 file.txt를 리소스로 생성|
