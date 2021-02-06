@@ -1448,7 +1448,7 @@ public abstract class AbstractUpdatableSqlRegistryTest {
 // 해당 클래스에는 @Test 메서드가 보이지 않지만 슈퍼클래스의 @Test 테스트 메서드를 모두 상속받아서 활용
 public class ConcurrentHashMapSqlRegistryTest extends AbstractUpdatableSqlRegistryTest {
 	protected UpdatableSqlRegistry createUpdatableSqlRegistry() {
-		return new ConcurrentHashMApSqlRegistry();
+		return new ConcurrentHashMpSqlRegistry();
 	}
 }
 ```
@@ -1576,7 +1576,7 @@ public class UserDaoTest {
 ```
 
 * `<context:annotation-config />` 삭제
-  * 해당 태그는 `@PostConstruct`를 붙인 메서드가 빈이 초기화된 후에 자동으로 실행되도록 사용
+  * `@PostConstruct`를 붙인 메서드를 빈이 초기화된 후에 자동으로 실행시키고자할 때 사용
   * 컨텍스트를 가져오는 클래스에 `@Configuration`이 있으면 삭제 가능
   <br>-> 컨테이너가 직접 `@PostConstruction` 애노테이션을 처리하는 빈 후처리기를 등록해줌.
 
