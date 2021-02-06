@@ -928,12 +928,12 @@ public interface Unmarshaller {
   ...
   public class OxmSqlService implements SqlService {
   	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
-	...
+  	...
 	
-	// private 멤버 클래스로 정의해서 톱레벨 클래스인 OxmSqlService만 사용 가능하도록
-	private class OxmSqlReader implements SqlReader {
-		...
-	}
+  	// private 멤버 클래스로 정의해서 톱레벨 클래스인 OxmSqlService만 사용 가능하도록
+  	private class OxmSqlReader implements SqlReader {
+  		...
+  	}
   }
   ```
   * 스프링의 OXM 서비스 추상화를 사용하면 언마샬러를 빈으로 등록해야 함.
@@ -945,23 +945,23 @@ public interface Unmarshaller {
   ```java
   // 리스트 7-51 내부 오브젝트의 프로퍼티를 전달해주는 코드
   public class OxmSqlService implements SqlService {
-	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
-	...
+  	private final OxmSqlReader oxmSqlReader = new OxmSqlReader();
+  	...
 	
-	// OxmSqlService의 프로퍼티를 통해 DI 받은 것을 멤버 클래스인 OxmSqlReader로 전달
-	public void setUnmarshaller(Unmarshaller unmarshaller) {
-		this.oxmSqlReader.setUnmarshaller(unmarshaller);
-	}
+  	// OxmSqlService의 프로퍼티를 통해 DI 받은 것을 멤버 클래스인 OxmSqlReader로 전달
+  	public void setUnmarshaller(Unmarshaller unmarshaller) {
+  		this.oxmSqlReader.setUnmarshaller(unmarshaller);
+  	}
 	
-	public void setSqlmapFile(String sqlmapFile) {
-		this.oxmSqlReader.setSqlmapFile(sqlmapFile);
-	}
+  	public void setSqlmapFile(String sqlmapFile) {
+  		this.oxmSqlReader.setSqlmapFile(sqlmapFile);
+  	}
 	
-	private class OxmSqlReader implements SqlReader {
-		private Unmarshaller unmarshaller;
-		private String sqlmapFile;
-		...
-	}
+  	private class OxmSqlReader implements SqlReader {
+  		private Unmarshaller unmarshaller;
+  		private String sqlmapFile;
+  		...
+  	}
   }
   
   // 리스트 7-52 완성된 OxmSqlService 클래스
