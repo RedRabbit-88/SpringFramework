@@ -1128,7 +1128,7 @@ public interface ResourceLoader {
 
 * Resource를 이용해 XML 파일 가져오기
   * Resource 타입은 소스와 무관하게 `getInputStream()` 메서드를 이용해 스트림으로 가져올 수 있음.
-  * Resource를 사용할 때는 **Reousrce 오브젝트가 실제 리소스는 아니라는 점을 주의**
+  * Resource를 사용할 때는 **Resource 오브젝트가 실제 리소스는 아니라는 점을 주의**
   <br>-> Resource는 리소스에 접근할 수 있는 추상화된 핸들러
   * 코드에서 클래스패스 리소스를 바로 지정하고 싶다면 `ClassPathResource`를 사용해 오브젝트를 생성
   * 문자열로 지정할 때는 클래스 로더가 인식할 수 있는 문자열로 표현
